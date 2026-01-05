@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Admin • Repartidores{% endblock %}
+
+{% block content %}
+<div class="topbar py-3">
+  <div class="container-fluid px-3 px-lg-4 d-flex align-items-center justify-content-between">
+    <div class="brand">
+      <div class="brand-badge">MB</div>
+      <div class="brand-title"><b>Admin</b><small>Repartidores</small></div>
+
+      {# ✅ Botones fijos (no dependen del apartado) #}
+      <div class="d-flex align-items-center gap-2 ms-3">
+        <form method="post" action="{{ url_for('admin_clear_orders') }}" style="margin:0;" onsubmit="return MagikConfirmClearOrders(this);">
+          <input type="hidden" name="password" value="">
+          <button type="submit" class="btn-danger-soft">Limpiar pedidos</button>
+        </form>
+        <a class="btn-ghost" href="{{ url_for('admin_logout') }}">Salir</a>
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn-ghost" href="{{ url_for('admin_products') }}">Productos</a>
+      <a class="btn-ghost" href="{{ url_for('admin_ingredients') }}">Ingredientes</a>
+    </div>
+  </div>
+</div>
+
+<main class="container-fluid px-3 px-lg-4 py-4">
+
+  <div class="row g-3">
+    <div class="col-12 col-xl-5">
+      <div class="glass">
+        <div class="glass-header"><h5>Crear repartidor</h5></div>
+        <div class="glass-body">
+          <form method="post" action="{{ url_for('admin_couriers_create') }}" class="row g-2">
+            <div class="col-12">
+              <label class="form-label muted mb-1">Nombre</label>
+              <input class="form-control" name="name" required>
+            </div>
+            <div class="col-12 mt-2">
+              <button class="btn-magik w-100" type="submit">Crear</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-7">
+      <div class="glass">
+        <div class="glass-header"><h5>Repartidores</h5><span class="tag">Editar / Eliminar</span></div>
+        <div class="glass-body">
+          {% for c in couriers %}
+            <div class="glass mb-3" style="box-shadow:none;">
+              <div class="glass-body">
+                <form method="post" action="{{ url_for('admin_couriers_update', cid=c.id) }}" class="row g-2">
+                  <div class="col-12">
+                    <label class="form-label muted mb-1">Nombre</label>
+                    <input class="form-control" name="name" value="{{ c.name }}">
+                  </div>
+                  <div class="col-12 mt-2">
+                    <button class="btn-ghost w-100" type="submit">Guardar cambios</button>
+                  </div>
+                </form>
+
+                <form method="post" action="{{ url_for('admin_couriers_delete', cid=c.id) }}" onsubmit="return confirm('¿Eliminar este repartidor?');" class="mt-2">
+                  <button class="btn-danger-soft w-100" type="submit">Eliminar repartidor</button>
+                </form>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function MagikConfirmClearOrders(form){
+    const ok = confirm("¿Seguro que querés borrar TODOS los pedidos? Esto es para cerrar el día.");
+    if(!ok) return false;
+    const pw = prompt("Contraseña admin:");
+    if(!pw) return false;
+    form.querySelector('input[name="password"]').value = pw;
+    return true;
+  }
+</script>
+{% endblock %}

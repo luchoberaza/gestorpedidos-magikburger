@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ticket • Magik</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --paper:#ffffff;
+      --ink:#0b1020;
+      --muted:#586179;
+      --line:#e8eaf1;
+      --cash:#16a34a;
+      --transfer:#2563eb;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      background:#f3f4f6;
+      font-family:Poppins, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--ink);
+    }
+    .wrap{
+      max-width: 420px;
+      margin: 14px auto;
+      padding: 12px;
+    }
+    .ticket{
+      background:var(--paper);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding: 16px 16px 14px 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      padding: 6px 0 10px 0;
+    }
+    .brand img{
+      height:40px;
+      width:auto;
+      display:block;
+    }
+    .magik{
+      font-weight:900;
+      font-size:30px;
+      letter-spacing:.2px;
+      line-height:1;
+    }
+    .meta{
+      margin-top: 6px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--line);
+      display:grid;
+      gap:6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .meta b{ color: var(--ink); }
+    .pay{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      font-weight:800;
+      font-size: 12px;
+      border:1px solid var(--line);
+      width: fit-content;
+      margin: 10px auto 0 auto;
+    }
+    .pay.cash{ color: var(--cash); border-color: rgba(22,163,74,.25); background: rgba(22,163,74,.06); }
+    .pay.transfer{ color: var(--transfer); border-color: rgba(37,99,235,.25); background: rgba(37,99,235,.06); }
+
+    hr{
+      border:0;
+      border-top:1px dashed var(--line);
+      margin: 12px 0;
+    }
+
+    .items{ display:grid; gap: 10px; }
+    .it{
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 10px;
+    }
+    .it-top{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .it-name{
+      font-weight: 900;
+      font-size: 14px;
+      line-height:1.2;
+    }
+    .it-qty{
+      font-weight:900;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .it-price{
+      font-weight: 900;
+      font-size: 14px;
+      white-space:nowrap;
+    }
+    .mods{
+      margin-top: 8px;
+      display:grid;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .mod-row{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap: 12px;
+    }
+    .mod-row b{ color: var(--ink); }
+    .mod-tag{
+      font-weight:800;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background:#fafafa;
+      font-size: 11px;
+      width: fit-content;
+    }
+    .mod-tag.remove{ color:#b91c1c; border-color: rgba(185,28,28,.20); background: rgba(185,28,28,.06); }
+    .mod-tag.add{ color:#0f766e; border-color: rgba(15,118,110,.20); background: rgba(15,118,110,.06); }
+
+    .total{
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--line);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      font-weight: 900;
+      font-size: 16px;
+    }
+    .note{
+      text-align:center;
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .no-print{
+      display:flex;
+      justify-content:center;
+      gap:10px;
+      margin-top: 12px;
+    }
+    .btn{
+      border: 1px solid var(--line);
+      background:#fff;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-weight: 900;
+      cursor:pointer;
+      font-family: inherit;
+    }
+
+    @media print{
+      body{ background:#fff; }
+      .wrap{ margin:0; padding:0; max-width: 100%; }
+      .ticket{ border:0; border-radius:0; box-shadow:none; padding: 0; }
+      .no-print{ display:none !important; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="ticket">
+
+      <div class="brand">
+        <!-- Poné tu logo transparente en: static/logo.png -->
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Magik logo"
+             onerror="this.style.display='none'">
+        <div class="magik">Magik</div>
+      </div>
+
+      <div class="meta">
+        <div><b>{{ order.address }}</b></div>
+        <div>Tel: <b>{{ order.phone }}</b></div>
+        <div>{{ order.ddmm }} • {{ order.hhmm }}{% if order.courier_name %} • Rep: <b>{{ order.courier_name }}</b>{% endif %}</div>
+      </div>
+
+      {% if order.payment_method == 'transfer' %}
+        <div class="pay transfer">📝 Transferencia</div>
+      {% else %}
+        <div class="pay cash">💵 Efectivo</div>
+      {% endif %}
+
+      <hr>
+
+      <div class="items">
+        {% for it in items %}
+          <div class="it">
+            <div class="it-top">
+              <div>
+                <div class="it-name">{{ it.name }}</div>
+                <div class="it-qty">x{{ it.qty }}</div>
+              </div>
+
+              {% if order.payment_method != 'transfer' %}
+                <div class="it-price">$ {{ (it.line_total_cents // 100) }}</div>
+              {% endif %}
+            </div>
+
+            <div class="mods">
+              {% if order.payment_method != 'transfer' %}
+                <div class="mod-row">
+                  <div>Base</div>
+                  <div><b>$ {{ (it.base_price_cents // 100) }}</b></div>
+                </div>
+              {% endif %}
+
+              {% if it.removed and it.removed|length > 0 %}
+                {% for r in it.removed %}
+                  <div class="mod-row">
+                    <div class="mod-tag remove">Sin</div>
+                    <div style="flex:1;"><b>{{ r }}</b></div>
+                    <div></div>
+                  </div>
+                {% endfor %}
+              {% endif %}
+
+              {% if it.added and it.added|length > 0 %}
+                {% for a in it.added %}
+                  <div class="mod-row">
+                    <div class="mod-tag add">Extra</div>
+                    <div style="flex:1;"><b>{{ a.name }}</b> {% if a.count > 1 %}x{{ a.count }}{% endif %}</div>
+                    {% if order.payment_method != 'transfer' %}
+                      <div><b>$ {{ (a.price_cents_total // 100) }}</b></div>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              {% endif %}
+
+              {% if (not it.removed or it.removed|length == 0) and (not it.added or it.added|length == 0) %}
+                <div style="font-size:11px;">Sin modificaciones</div>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="total">
+        <span>Total</span>
+        {% if order.payment_method == 'transfer' %}
+          <span>TRANSFERIDO ✅</span>
+        {% else %}
+          <span>$ {{ (order.total_cents // 100) }}</span>
+        {% endif %}
+      </div>
+
+      <div class="note">Gracias ✨</div>
+
+      <div class="no-print">
+        <button class="btn" onclick="window.location.href='/'">Volver</button>
+        <button class="btn" onclick="window.print()">Imprimir</button>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Admin • Magik</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg0:#060816;
+      --bg1:#0b1020;
+      --glass:rgba(255,255,255,.07);
+      --stroke:rgba(255,255,255,.14);
+      --text:#eaf0ff;
+      --muted:rgba(234,240,255,.72);
+      --danger0:#ef4444;
+      --danger1:#b91c1c;
+      --shadow: 0 22px 60px rgba(0,0,0,.55);
+      --shadow2: 0 10px 24px rgba(0,0,0,.35);
+      --radius: 22px;
+    }
+
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+
+    body{
+      margin:0;
+      font-family:Poppins,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(1100px 650px at 14% 12%, rgba(239,68,68,.30), transparent 55%),
+        radial-gradient(1000px 650px at 86% 14%, rgba(168,85,247,.26), transparent 58%),
+        radial-gradient(900px 650px at 50% 92%, rgba(59,130,246,.18), transparent 60%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding: 22px;
+      overflow:hidden;
+    }
+
+    /* glow “magik” */
+    .orb{
+      position:absolute;
+      width: 520px;
+      height: 520px;
+      border-radius: 999px;
+      filter: blur(40px);
+      opacity:.45;
+      pointer-events:none;
+      background: radial-gradient(circle at 30% 30%, rgba(239,68,68,.55), transparent 55%),
+                  radial-gradient(circle at 70% 70%, rgba(168,85,247,.55), transparent 55%);
+      top:-180px;
+      left:-180px;
+      animation: float 8s ease-in-out infinite;
+    }
+    .orb2{
+      position:absolute;
+      width: 520px;
+      height: 520px;
+      border-radius: 999px;
+      filter: blur(46px);
+      opacity:.40;
+      pointer-events:none;
+      background: radial-gradient(circle at 35% 35%, rgba(59,130,246,.55), transparent 55%),
+                  radial-gradient(circle at 70% 70%, rgba(16,185,129,.22), transparent 55%);
+      bottom:-220px;
+      right:-220px;
+      animation: float 9s ease-in-out infinite reverse;
+    }
+    @keyframes float{
+      0%,100%{ transform: translate3d(0,0,0); }
+      50%{ transform: translate3d(18px, -12px, 0); }
+    }
+
+    .card{
+      width:100%;
+      max-width: 420px;
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      position:relative;
+    }
+
+    .card::before{
+      content:"";
+      position:absolute;
+      inset:-2px;
+      border-radius: calc(var(--radius) + 2px);
+      background: radial-gradient(900px 160px at 10% 0%, rgba(239,68,68,.18), transparent 55%),
+                  radial-gradient(900px 160px at 90% 0%, rgba(168,85,247,.14), transparent 55%);
+      pointer-events:none;
+      opacity:.95;
+    }
+
+    .header{
+      padding: 22px 22px 10px 22px;
+      position:relative;
+      z-index:1;
+    }
+
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.14);
+      box-shadow: var(--shadow2);
+    }
+
+    .icon{
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      display:grid;
+      place-items:center;
+      background: linear-gradient(135deg, rgba(239,68,68,.28), rgba(185,28,28,.10));
+      border: 1px solid rgba(239,68,68,.25);
+    }
+
+    .title-wrap{
+      line-height:1.1;
+    }
+    .title{
+      font-weight: 900;
+      font-size: 20px;
+      letter-spacing: .2px;
+      margin:0;
+    }
+    .subtitle{
+      margin: 2px 0 0 0;
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .body{
+      padding: 14px 22px 22px 22px;
+      position:relative;
+      z-index:1;
+    }
+
+    .field{
+      margin-top: 14px;
+    }
+    label{
+      display:block;
+      font-size: 12px;
+      font-weight: 700;
+      color: rgba(234,240,255,.78);
+      margin-bottom: 8px;
+      letter-spacing: .2px;
+    }
+
+    .input-wrap{
+      position:relative;
+    }
+
+    input{
+      width:100%;
+      padding: 13px 44px 13px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(255,255,255,.08);
+      color: #fff;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: transform .12s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
+      box-shadow: 0 10px 18px rgba(0,0,0,.18);
+    }
+    input:focus{
+      border-color: rgba(239,68,68,.35);
+      background: rgba(255,255,255,.10);
+      box-shadow: 0 14px 28px rgba(0,0,0,.28);
+      transform: translateY(-1px);
+    }
+
+    .eye{
+      position:absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 32px;
+      height: 32px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      display:grid;
+      place-items:center;
+      cursor:pointer;
+      user-select:none;
+      transition: transform .12s ease, background .18s ease;
+    }
+    .eye:hover{ transform: translateY(-50%) scale(1.03); background: rgba(255,255,255,.09); }
+
+    .actions{
+      margin-top: 16px;
+      display:grid;
+      gap: 10px;
+    }
+
+    .btn-danger{
+      width:100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 0;
+      cursor:pointer;
+      color:#fff;
+      font-family: inherit;
+      font-weight: 900;
+      font-size: 14px;
+      letter-spacing: .2px;
+      background: linear-gradient(135deg, var(--danger0), var(--danger1));
+      box-shadow: 0 18px 40px rgba(239,68,68,.22);
+      transition: transform .12s ease, box-shadow .18s ease, filter .18s ease;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap: 10px;
+    }
+    .btn-danger:hover{
+      transform: translateY(-1px);
+      box-shadow: 0 22px 52px rgba(239,68,68,.28);
+      filter: brightness(1.02);
+    }
+    .btn-danger:active{ transform: translateY(0px) scale(.99); }
+
+    .btn-ghost{
+      width:100%;
+      padding: 11px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      color: rgba(234,240,255,.85);
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 13px;
+      cursor:pointer;
+      transition: transform .12s ease, background .18s ease, border-color .18s ease;
+      text-decoration:none;
+      text-align:center;
+      display:block;
+    }
+    .btn-ghost:hover{
+      transform: translateY(-1px);
+      background: rgba(255,255,255,.085);
+      border-color: rgba(255,255,255,.22);
+    }
+
+    .error{
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(239,68,68,.22);
+      background: rgba(239,68,68,.08);
+      color: #fecaca;
+      font-size: 12px;
+      font-weight: 800;
+      text-align:center;
+    }
+
+    .hint{
+      margin-top: 10px;
+      font-size: 11px;
+      color: rgba(234,240,255,.55);
+      text-align:center;
+      font-weight: 700;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="orb"></div>
+  <div class="orb2"></div>
+
+  <div class="card">
+    <div class="header">
+      <div class="badge">
+        <div class="icon" aria-hidden="true">
+          <!-- simple user icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M20 21a8 8 0 0 0-16 0" stroke="rgba(234,240,255,.92)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="rgba(234,240,255,.92)" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="title-wrap">
+          <p class="title">Acceso Admin</p>
+          <p class="subtitle">Ingresá la contraseña para administrar MagikBurger</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="body">
+      <form method="post" autocomplete="off">
+        <div class="field">
+          <label for="password">Contraseña</label>
+          <div class="input-wrap">
+            <input id="password" type="password" name="password" autofocus required placeholder="••••••••••">
+            <div class="eye" id="togglePwd" title="Mostrar/ocultar">
+              <!-- eye icon -->
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" stroke="rgba(234,240,255,.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="rgba(234,240,255,.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn-danger" type="submit">
+            <span>Entrar</span>
+            <span aria-hidden="true">→</span>
+          </button>
+
+          <!-- ✅ FIX endpoint correcto: home -->
+          <a class="btn-ghost" href="{{ url_for('home') }}">Salir</a>
+        </div>
+
+        {% if error %}
+          <div class="error">{{ error }}</div>
+        {% endif %}
+
+        <div class="hint">Tip: este acceso es solo para administración interna.</div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // toggle mostrar/ocultar contraseña (solo UI)
+    (function(){
+      const btn = document.getElementById('togglePwd');
+      const input = document.getElementById('password');
+      if(!btn || !input) return;
+      btn.addEventListener('click', () => {
+        input.type = (input.type === 'password') ? 'text' : 'password';
+        input.focus();
+      });
+    })();
+  </script>
+</body>
+</html>

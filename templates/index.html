@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}MagikBurger • Pedidos{% endblock %}
+
+{% block content %}
+  <div class="topbar py-3 no-print">
+    <div class="container-fluid px-3 px-lg-4 d-flex align-items-center justify-content-between">
+      <div class="brand">
+        <div class="brand-badge">MB</div>
+
+        <div class="brand-title">
+          <b>MagikBurger</b>
+          <small>Pedidos</small>
+        </div>
+
+        <!-- Admin button (icon only) -->
+        <a class="admin-pill" href="{{ url_for('admin_login') }}" title="Admin">👤</a>
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        <button id="btnViewNew" class="btn-ghost active-pill" type="button">Nuevo</button>
+        <button id="btnViewOrders" class="btn-ghost" type="button">Pedidos</button>
+        <button id="btnViewSummary" class="btn-ghost" type="button">Liquidación</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW: NUEVO -->
+  <main id="viewNew" class="container-fluid px-3 px-lg-4 py-4 no-print">
+    <div class="row g-3">
+      <div class="col-12 col-xl-6">
+        <div class="glass">
+          <div class="glass-header">
+            <h5>Nuevo pedido</h5>
+            <span class="tag">Ingresar nuevo pedido</span>
+          </div>
+
+          <div class="glass-body">
+            <div class="row g-2">
+              <div class="col-12">
+                <label class="form-label muted mb-1">Dirección</label>
+                <input id="addr" class="form-control" placeholder="Ej: Brasil 1234 apto 2" />
+              </div>
+              <div class="col-12">
+                <label class="form-label muted mb-1">Teléfono</label>
+                <input id="phone" class="form-control" placeholder="Ej: 099 123 456" />
+              </div>
+
+              <div class="col-12 col-lg-6 mt-2">
+                <label class="form-label muted mb-1">Repartidor</label>
+                <select id="courier" class="form-select"></select>
+              </div>
+
+              <div class="col-12 col-lg-6 mt-2">
+                <label class="form-label muted mb-1">Pago</label>
+                <div class="pay-toggle">
+                  <button id="payCash" type="button" class="paybtn pay-cash active">💵 Efectivo</button>
+                  <button id="payTransfer" type="button" class="paybtn pay-transfer">📝 Transferencia</button>
+                </div>
+              </div>
+
+              <div class="col-12 mt-2">
+                <label class="form-label muted mb-1">Buscar producto</label>
+                <input id="search" class="form-control" placeholder="Escribí para filtrar..." oninput="Magik.renderProducts()" />
+              </div>
+
+              <div class="col-12">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <span class="muted" style="font-weight:700;">Productos</span>
+                  <span class="tag">click para agregar</span>
+                </div>
+                <div id="products" class="product-grid"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pedido actual -->
+      <div class="col-12 col-xl-6">
+        <div class="glass">
+          <div class="glass-header">
+            <div class="d-flex align-items-center gap-2">
+              <h5 style="margin:0;">Pedido actual</h5>
+              <span class="chip">N° <span id="tmpOrderId">—</span></span>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button class="btn-danger-soft" type="button" onclick="Magik.resetCurrent()">Vaciar</button>
+              <button class="btn-magik" type="button" onclick="Magik.saveOrder()">Guardar + Imprimir</button>
+            </div>
+          </div>
+
+          <div class="glass-body">
+            <div id="currentItems"></div>
+
+            <div class="mt-2">
+              <div class="d-flex align-items-center justify-content-between">
+                <div class="muted" style="font-weight:800;">Total</div>
+                <div style="font-weight:900; font-size:18px;">$ <span id="currentTotal">0</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- VIEW: PEDIDOS -->
+  <main id="viewOrders" class="container-fluid px-3 px-lg-4 py-4 no-print" style="display:none;">
+    <div class="glass">
+      <div class="glass-header">
+        <h5>Pedidos (hoy)</h5>
+        <span class="tag">Control pedidos</span>
+      </div>
+      <div class="glass-body">
+        <div id="ordersList" class="d-grid gap-2"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- VIEW: LIQUIDACIÓN -->
+  <main id="viewSummary" class="container-fluid px-3 px-lg-4 py-4 no-print" style="display:none;">
+    <div class="glass">
+      <div class="glass-header">
+        <h5>Liquidación (hoy)</h5>
+        <span class="tag">Efectivo a rendir = Total - Transferencia</span>
+      </div>
+      <div class="glass-body">
+        <div id="summaryTop" class="summary-top"></div>
+        <div id="courierSummary" class="d-grid gap-2 mt-3"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- MODALS (fuera de las vistas para que no queden dentro de un contenedor con display:none) -->
+  <!-- Modal: editar pedido completo -->
+  <div class="modal fade" id="editOrderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+      <div class="modal-content modal-magik">
+        <div class="modal-header modal-magik-header">
+          <div class="d-flex align-items-center gap-2">
+            <h5 class="modal-title" style="font-weight:900; margin:0;">Editar pedido</h5>
+            <span class="chip">N° <span id="editOrderId">—</span></span>
+          </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12 col-xl-6">
+              <div class="glass" style="box-shadow:none;">
+                <div class="glass-header">
+                  <h5>Datos + productos</h5>
+                  <span class="tag">Editar</span>
+                </div>
+
+                <div class="glass-body">
+                  <div class="row g-2">
+                    <div class="col-12">
+                      <label class="form-label muted mb-1">Dirección</label>
+                      <input id="editAddr" class="form-control" placeholder="Ej: Brasil 1234 apto 2" />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label muted mb-1">Teléfono</label>
+                      <input id="editPhone" class="form-control" placeholder="Ej: 099 123 456" />
+                    </div>
+
+                    <div class="col-12 col-lg-6 mt-2">
+                      <label class="form-label muted mb-1">Repartidor</label>
+                      <select id="editCourier" class="form-select"></select>
+                    </div>
+
+                    <div class="col-12 col-lg-6 mt-2">
+                      <label class="form-label muted mb-1">Pago</label>
+                      <div class="pay-toggle">
+                        <button id="editPayCash" type="button" class="paybtn pay-cash active">💵 Efectivo</button>
+                        <button id="editPayTransfer" type="button" class="paybtn pay-transfer">📝 Transferencia</button>
+                      </div>
+                    </div>
+
+                    <div class="col-12 mt-2">
+                      <label class="form-label muted mb-1">Buscar producto</label>
+                      <input id="editSearch" class="form-control" placeholder="Escribí para filtrar..." />
+                    </div>
+
+                    <div class="col-12">
+                      <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="muted" style="font-weight:700;">Productos</span>
+                        <span class="tag">click para agregar</span>
+                      </div>
+                      <div id="editProducts" class="product-grid"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 col-xl-6">
+              <div class="glass" style="box-shadow:none;">
+                <div class="glass-header">
+                  <div class="d-flex align-items-center gap-2">
+                    <h5 style="margin:0;">Pedido</h5>
+                    <span class="tag">Editar ítems</span>
+                  </div>
+                  <button id="editClear" class="btn-danger-soft" type="button">Vaciar</button>
+                </div>
+
+                <div class="glass-body">
+                  <div id="editItems"></div>
+                  <div class="mt-2">
+                    <div class="d-flex align-items-center justify-content-between">
+                      <div class="muted" style="font-weight:800;">Total</div>
+                      <div style="font-weight:900; font-size:18px;">$ <span id="editTotal">0</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer modal-magik-footer">
+          <button type="button" class="btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+          <button id="editSave" type="button" class="btn-magik">Guardar cambios</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: editar modificaciones de un ítem (debe ir DESPUÉS del modal de editar pedido para que quede encima) -->
+  <div class="modal fade" id="modsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content modal-magik">
+        <div class="modal-header modal-magik-header">
+          <h5 class="modal-title" style="font-weight:900;">Editar ítem</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="modsContent" class="row g-3"></div>
+        </div>
+        <div class="modal-footer modal-magik-footer">
+          <button type="button" class="btn-ghost" data-bs-dismiss="modal">Listo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      if (typeof Magik !== "undefined" && Magik.init) Magik.init();
+    });
+  </script>
+{% endblock %}
