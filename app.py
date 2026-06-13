@@ -395,7 +395,7 @@ def _safe_iso_date_prefix() -> str:
 CASH_FLOAT_CENTS = 1500 * 100  # $1500 una sola vez por repartidor si tuvo pedidos
 
 
-def generate_daily_orders_pdf_bytes(conn):
+def generate_daily_orders_pdf_bytes(conn, include_adjustments=True):
     ensure_reportlab()
 
     import io
@@ -685,15 +685,27 @@ def generate_daily_orders_pdf_bytes(conn):
                 )
             )
 
+            # Ajustes (envío / descuentos) — opcional, decidido al cerrar el día.
+            card_rows = [[head], [meta], [contact], [Spacer(1, 2 * mm)], [items_tbl]]
+            if include_adjustments and _table_has_column(conn, "order_adjustments", "order_id"):
+                _adjs = conn.execute(
+                    "SELECT label, amount_cents FROM order_adjustments WHERE order_id=? "
+                    "ORDER BY sort_order ASC, id ASC;",
+                    (oid,),
+                ).fetchall()
+                if _adjs:
+                    def _esc(s):
+                        return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    _parts = []
+                    for _a in _adjs:
+                        _c = int(_a["amount_cents"] or 0)
+                        _sign = "+" if _c >= 0 else "−"
+                        _parts.append(f"{_esc(_a['label'])}: <b>{_sign}${money(abs(_c))}</b>")
+                    card_rows.append([Spacer(1, 1 * mm)])
+                    card_rows.append([Paragraph("<font color='#9CA3AF'>Ajustes:</font> " + " · ".join(_parts), s_muted)])
+
             # Card
-            card = Table(
-                [[head],
-                 [meta],
-                 [contact],
-                 [Spacer(1, 2 * mm)],
-                 [items_tbl]],
-                colWidths=[None],
-            )
+            card = Table(card_rows, colWidths=[None])
             card.setStyle(
                 TableStyle(
                     [
@@ -1408,15 +1420,27 @@ def generate_daily_orders_pdf_bytes(conn):
                 )
             )
 
+            # Ajustes (envío / descuentos) — opcional, decidido al cerrar el día.
+            card_rows = [[head], [meta], [contact], [Spacer(1, 2 * mm)], [items_tbl]]
+            if include_adjustments and _table_has_column(conn, "order_adjustments", "order_id"):
+                _adjs = conn.execute(
+                    "SELECT label, amount_cents FROM order_adjustments WHERE order_id=? "
+                    "ORDER BY sort_order ASC, id ASC;",
+                    (oid,),
+                ).fetchall()
+                if _adjs:
+                    def _esc(s):
+                        return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    _parts = []
+                    for _a in _adjs:
+                        _c = int(_a["amount_cents"] or 0)
+                        _sign = "+" if _c >= 0 else "−"
+                        _parts.append(f"{_esc(_a['label'])}: <b>{_sign}${money(abs(_c))}</b>")
+                    card_rows.append([Spacer(1, 1 * mm)])
+                    card_rows.append([Paragraph("<font color='#9CA3AF'>Ajustes:</font> " + " · ".join(_parts), s_muted)])
+
             # Card
-            card = Table(
-                [[head],
-                 [meta],
-                 [contact],
-                 [Spacer(1, 2 * mm)],
-                 [items_tbl]],
-                colWidths=[None],
-            )
+            card = Table(card_rows, colWidths=[None])
             card.setStyle(
                 TableStyle(
                     [
@@ -4203,8 +4227,10 @@ def admin_clear_orders():
 
     conn = db()
     try:
+        # Opción decidida al momento: incluir o no los ajustes en el detalle del reporte.
+        include_adj = (request.form.get("include_adjustments") or "1") != "0"
         # 1) Generar PDF ANTES de borrar (incluye TODOS los pedidos vivos)
-        filename, pdf_bytes = generate_daily_orders_pdf_bytes(conn)
+        filename, pdf_bytes = generate_daily_orders_pdf_bytes(conn, include_adjustments=include_adj)
 
         # 2) Borrar pedidos y sus tablas hijas (las FK CASCADE no están forzadas en SQLite,
         #    así que limpiamos a mano para no dejar ítems/mods/ajustes huérfanos).

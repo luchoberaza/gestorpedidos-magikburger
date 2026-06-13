@@ -12,6 +12,7 @@
       <div class="d-flex align-items-center gap-2 ms-3">
         <form method="post" action="{{ url_for('admin_clear_orders') }}" style="margin:0;">
           <input type="hidden" name="password" value="">
+          <input type="hidden" name="include_adjustments" value="1">
           <button type="button" class="btn-danger-soft" onclick="MagikAdminClearOrders(this.form)">Limpiar pedidos</button>
         </form>
         <a class="btn-ghost" href="{{ url_for('admin_logout') }}">Salir</a>
@@ -97,6 +98,15 @@
         )
       : true;
     if (!ok) return;
+
+    const incAdj = (window.MBDialog && window.MBDialog.confirm)
+      ? await window.MBDialog.confirm(
+          "¿Incluir los ajustes (envío, descuentos) en el detalle del reporte?",
+          { title: "Reporte del día", okText: "Sí, incluir", cancelText: "No incluir" }
+        )
+      : true;
+    const adjInput = form.querySelector('input[name="include_adjustments"]');
+    if (adjInput) adjInput.value = incAdj ? "1" : "0";
 
     const pw = (window.MBDialog && window.MBDialog.promptPassword)
       ? await window.MBDialog.promptPassword("Ingresá la contraseña de admin para confirmar.", { title: "Contraseña admin", label: "Contraseña admin" })
