@@ -92,6 +92,7 @@
       border-radius: 14px;
       padding: 10px 10px;
     }
+    .it.promo{ border-color: rgba(139,92,246,.35); background: rgba(139,92,246,.05); }
     .it-top{
       display:flex;
       align-items:flex-start;
@@ -113,6 +114,12 @@
       font-weight: 900;
       font-size: 14px;
       white-space:nowrap;
+    }
+    .comp-name{
+      font-weight: 800;
+      font-size: 12.5px;
+      color: var(--ink);
+      margin-top: 6px;
     }
     .mods{
       margin-top: 8px;
@@ -139,6 +146,24 @@
     }
     .mod-tag.remove{ color:#b91c1c; border-color: rgba(185,28,28,.20); background: rgba(185,28,28,.06); }
     .mod-tag.add{ color:#0f766e; border-color: rgba(15,118,110,.20); background: rgba(15,118,110,.06); }
+
+    .adjustments{
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--line);
+      display:grid;
+      gap: 6px;
+      font-size: 13px;
+    }
+    .adj-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 12px;
+      font-weight: 800;
+    }
+    .adj-row .amt.pos{ color: var(--cash); white-space:nowrap; }
+    .adj-row .amt.neg{ color:#b91c1c; white-space:nowrap; }
 
     .total{
       margin-top: 12px;
@@ -174,109 +199,215 @@
       font-family: inherit;
     }
 
+    /* ===========================================================
+       IMPRESIÓN TÉRMICA (robusta, sin depender del ancho exacto)
+       - @page con margen chico de seguridad → el ticket sale recto
+         y el precio NO se corta contra el borde derecho.
+       - El ticket ocupa el 100% del papel (58mm / 80mm / lo que sea)
+         con un padding interno de seguridad.
+       =========================================================== */
     @media print{
-      body{ background:#fff; }
-      .wrap{ margin:0; padding:0; max-width: 100%; }
-      .ticket{ border:0; border-radius:0; box-shadow:none; padding: 0; }
+      @page{ margin: 3mm; }
+      html, body{ background:#fff !important; }
+      body{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+      .wrap{
+        margin:0;
+        padding:0;
+        max-width: 100%;
+        width: 100%;
+      }
+      .ticket{
+        border:0;
+        border-radius:0;
+        box-shadow:none;
+        /* padding-right un poco mayor: colchón para que el precio nunca se corte */
+        padding: 0 6px 0 2px;
+        width: 100%;
+      }
+      .it, .it.promo{
+        border:0;
+        border-radius:0;
+        padding: 4px 0;
+        border-bottom: 1px dashed var(--line);
+        background: transparent !important;
+      }
+      .items{ gap: 4px; }
+      .it-top{ gap: 6px; }
+      .it-name{ font-size: 13px; }
+      .it-price{ font-size: 13px; }
+      .total{ font-size: 15px; }
       .no-print{ display:none !important; }
+
+      /* Cada copia en su propia hoja */
+      .ticket-copy{ page-break-after: always; }
+      .ticket-copy:last-child{ page-break-after: auto; }
     }
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-    <div class="ticket">
+  {% for copy_i in range(copies) %}
+  <div class="ticket-copy">
+    <div class="wrap">
+      <div class="ticket">
 
-      <div class="brand">
-        <!-- Poné tu logo transparente en: static/logo.png -->
-        <img src="{{ url_for('static', filename='logo.png') }}" alt="Magik logo"
-             onerror="this.style.display='none'">
-        <div class="magik">Magik</div>
-      </div>
+        <div class="brand">
+          <img src="{{ url_for('static', filename='logo.png') }}" alt="Magik logo"
+               onerror="this.style.display='none'">
+          <div class="magik">Magik</div>
+        </div>
 
-      <div class="meta">
-        <div><b>{{ order.address }}</b></div>
-        <div>Tel: <b>{{ order.phone }}</b></div>
-        <div>{{ order.ddmm }} • {{ order.hhmm }}{% if order.courier_name %} • Rep: <b>{{ order.courier_name }}</b>{% endif %}</div>
-      </div>
+        <div class="meta">
+          <div><b>{{ order.address }}</b></div>
+          <div>Tel: <b>{{ order.phone }}</b></div>
+          <div>{{ order.ddmm }} • {{ order.hhmm }}{% if order.courier_name %} • Rep: <b>{{ order.courier_name }}</b>{% endif %}</div>
+        </div>
 
-      {% if order.payment_method == 'transfer' %}
-        <div class="pay transfer">📝 Transferencia</div>
-      {% else %}
-        <div class="pay cash">💵 Efectivo</div>
-      {% endif %}
-
-      <hr>
-
-      <div class="items">
-        {% for it in items %}
-          <div class="it">
-            <div class="it-top">
-              <div>
-                <div class="it-name">{{ it.name }}</div>
-                <div class="it-qty">x{{ it.qty }}</div>
-              </div>
-
-              {% if order.payment_method != 'transfer' %}
-                <div class="it-price">$ {{ (it.line_total_cents // 100) }}</div>
-              {% endif %}
-            </div>
-
-            <div class="mods">
-              {% if order.payment_method != 'transfer' %}
-                <div class="mod-row">
-                  <div>Base</div>
-                  <div><b>$ {{ (it.base_price_cents // 100) }}</b></div>
-                </div>
-              {% endif %}
-
-              {% if it.removed and it.removed|length > 0 %}
-                {% for r in it.removed %}
-                  <div class="mod-row">
-                    <div class="mod-tag remove">Sin</div>
-                    <div style="flex:1;"><b>{{ r }}</b></div>
-                    <div></div>
-                  </div>
-                {% endfor %}
-              {% endif %}
-
-              {% if it.added and it.added|length > 0 %}
-                {% for a in it.added %}
-                  <div class="mod-row">
-                    <div class="mod-tag add">Extra</div>
-                    <div style="flex:1;"><b>{{ a.name }}</b> {% if a.count > 1 %}x{{ a.count }}{% endif %}</div>
-                    {% if order.payment_method != 'transfer' %}
-                      <div><b>$ {{ (a.price_cents_total // 100) }}</b></div>
-                    {% endif %}
-                  </div>
-                {% endfor %}
-              {% endif %}
-
-              {% if (not it.removed or it.removed|length == 0) and (not it.added or it.added|length == 0) %}
-                <div style="font-size:11px;">Sin modificaciones</div>
-              {% endif %}
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-
-      <div class="total">
-        <span>Total</span>
         {% if order.payment_method == 'transfer' %}
-          <span>TRANSFERIDO ✅</span>
+          <div class="pay transfer">📝 Transferencia</div>
         {% else %}
-          <span>$ {{ (order.total_cents // 100) }}</span>
+          <div class="pay cash">💵 Efectivo</div>
         {% endif %}
+
+        <hr>
+
+        <div class="items">
+          {% for blk in blocks %}
+            {% if blk.kind == 'promo' %}
+              <div class="it promo">
+                <div class="it-top">
+                  <div>
+                    <div class="it-name">🎁 {{ blk.promo_name }}</div>
+                    <div class="it-qty">Promo</div>
+                  </div>
+                  {% if order.payment_method != 'transfer' %}
+                    <div class="it-price">$ {{ (blk.line_total_cents // 100) }}</div>
+                  {% endif %}
+                </div>
+
+                <div class="mods">
+                  {% for comp in blk.components %}
+                    <div class="comp-name">• {{ comp.name }}{% if comp.qty > 1 %} x{{ comp.qty }}{% endif %}</div>
+
+                    {% for r in comp.removed %}
+                      <div class="mod-row">
+                        <div class="mod-tag remove">Sin</div>
+                        <div style="flex:1;"><b>{{ r }}</b></div>
+                        <div></div>
+                      </div>
+                    {% endfor %}
+
+                    {% for a in comp.added %}
+                      <div class="mod-row">
+                        <div class="mod-tag add">Extra</div>
+                        <div style="flex:1;"><b>{{ a.name }}</b> {% if a.count > 1 %}x{{ a.count }}{% endif %}</div>
+                        {% if order.payment_method != 'transfer' %}
+                          <div><b>$ {{ (a.price_cents_total // 100) }}</b></div>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+
+                    {% if (not comp.removed or comp.removed|length == 0) and (not comp.added or comp.added|length == 0) %}
+                      <div style="font-size:11px;">Sin modificaciones</div>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </div>
+            {% else %}
+              <div class="it">
+                <div class="it-top">
+                  <div>
+                    <div class="it-name">{{ blk.name }}</div>
+                    <div class="it-qty">x{{ blk.qty }}</div>
+                  </div>
+
+                  {% if order.payment_method != 'transfer' %}
+                    <div class="it-price">$ {{ (blk.line_total_cents // 100) }}</div>
+                  {% endif %}
+                </div>
+
+                <div class="mods">
+                  {% if order.payment_method != 'transfer' %}
+                    <div class="mod-row">
+                      <div>Base</div>
+                      <div><b>$ {{ (blk.base_price_cents // 100) }}</b></div>
+                    </div>
+                  {% endif %}
+
+                  {% if blk.removed and blk.removed|length > 0 %}
+                    {% for r in blk.removed %}
+                      <div class="mod-row">
+                        <div class="mod-tag remove">Sin</div>
+                        <div style="flex:1;"><b>{{ r }}</b></div>
+                        <div></div>
+                      </div>
+                    {% endfor %}
+                  {% endif %}
+
+                  {% if blk.added and blk.added|length > 0 %}
+                    {% for a in blk.added %}
+                      <div class="mod-row">
+                        <div class="mod-tag add">Extra</div>
+                        <div style="flex:1;"><b>{{ a.name }}</b> {% if a.count > 1 %}x{{ a.count }}{% endif %}</div>
+                        {% if order.payment_method != 'transfer' %}
+                          <div><b>$ {{ (a.price_cents_total // 100) }}</b></div>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                  {% endif %}
+
+                  {% if (not blk.removed or blk.removed|length == 0) and (not blk.added or blk.added|length == 0) %}
+                    <div style="font-size:11px;">Sin modificaciones</div>
+                  {% endif %}
+                </div>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        {% if adjustments and adjustments|length > 0 and order.payment_method != 'transfer' %}
+          <div class="adjustments">
+            {% for adj in adjustments %}
+              <div class="adj-row">
+                <div>{{ adj.label }}</div>
+                {% if adj.amount_cents < 0 %}
+                  <div class="amt neg">− $ {{ ((adj.amount_cents * -1) // 100) }}</div>
+                {% else %}
+                  <div class="amt pos">+ $ {{ (adj.amount_cents // 100) }}</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <div class="total">
+          <span>Total</span>
+          {% if order.payment_method == 'transfer' %}
+            <span>TRANSFERIDO ✅</span>
+          {% else %}
+            <span>$ {{ (order.total_cents // 100) }}</span>
+          {% endif %}
+        </div>
+
+        <div class="note">Gracias ✨</div>
+
+        <div class="no-print">
+          <button class="btn" onclick="window.location.href='/'">Volver</button>
+          <button class="btn" onclick="window.print()">Imprimir</button>
+        </div>
+
       </div>
-
-      <div class="note">Gracias ✨</div>
-
-      <div class="no-print">
-        <button class="btn" onclick="window.location.href='/'">Volver</button>
-        <button class="btn" onclick="window.print()">Imprimir</button>
-      </div>
-
     </div>
   </div>
+  {% endfor %}
+
+  {% if autoprint %}
+  <script>
+    window.addEventListener('load', function(){
+      setTimeout(function(){ try{ window.focus(); window.print(); }catch(e){} }, 300);
+    });
+  </script>
+  {% endif %}
 </body>
 </html>

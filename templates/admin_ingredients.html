@@ -10,15 +10,16 @@
 
       {# ✅ Botones fijos (no dependen del apartado) #}
       <div class="d-flex align-items-center gap-2 ms-3">
-        <form method="post" action="{{ url_for('admin_clear_orders') }}" style="margin:0;" onsubmit="return MagikConfirmClearOrders(this);">
+        <form method="post" action="{{ url_for('admin_clear_orders') }}" style="margin:0;">
           <input type="hidden" name="password" value="">
-          <button type="submit" class="btn-danger-soft">Limpiar pedidos</button>
+          <button type="button" class="btn-danger-soft" onclick="MagikAdminClearOrders(this.form)">Limpiar pedidos</button>
         </form>
         <a class="btn-ghost" href="{{ url_for('admin_logout') }}">Salir</a>
       </div>
     </div>
     <div class="d-flex gap-2">
       <a class="btn-ghost" href="{{ url_for('admin_products') }}">Productos</a>
+      <a class="btn-ghost" href="{{ url_for('admin_promos') }}">Promos</a>
       <a class="btn-ghost" href="{{ url_for('admin_couriers') }}">Repartidores</a>
     </div>
   </div>
@@ -68,8 +69,8 @@
                   </div>
                 </form>
 
-                <form method="post" action="{{ url_for('admin_ingredients_delete', iid=ing.id) }}" onsubmit="return confirm('¿Eliminar este ingrediente?');" class="mt-2">
-                  <button class="btn-danger-soft w-100" type="submit">Eliminar ingrediente</button>
+                <form method="post" action="{{ url_for('admin_ingredients_delete', iid=ing.id) }}" class="mt-2">
+                  <button class="btn-danger-soft w-100" type="button" onclick="MagikAdminConfirmSubmit(this, '¿Eliminar este ingrediente?')">Eliminar ingrediente</button>
                 </form>
               </div>
             </div>
@@ -83,13 +84,34 @@
 
 {% block scripts %}
 <script>
-  function MagikConfirmClearOrders(form){
-    const ok = confirm("¿Seguro que querés borrar TODOS los pedidos? Esto es para cerrar el día.");
-    if(!ok) return false;
-    const pw = prompt("Contraseña admin:");
-    if(!pw) return false;
-    form.querySelector('input[name="password"]').value = pw;
-    return true;
+  async function MagikAdminClearOrders(form){
+    if (!form) return;
+    const ok = (window.MBDialog && window.MBDialog.confirm)
+      ? await window.MBDialog.confirm(
+          "¿Seguro que querés borrar TODOS los pedidos?\n\nEsto es para cerrar el día.",
+          { title: "Limpiar pedidos", okText: "Continuar", cancelText: "Cancelar", danger: true }
+        )
+      : true;
+    if (!ok) return;
+
+    const pw = (window.MBDialog && window.MBDialog.promptPassword)
+      ? await window.MBDialog.promptPassword("Ingresá la contraseña de admin para confirmar.", { title: "Contraseña admin", label: "Contraseña admin" })
+      : null;
+    if (!pw) return;
+
+    const input = form.querySelector('input[name="password"]');
+    if (input) input.value = pw;
+    form.submit();
+  }
+
+  async function MagikAdminConfirmSubmit(btn, message){
+    if (!btn) return;
+    const ok = (window.MBDialog && window.MBDialog.confirm)
+      ? await window.MBDialog.confirm(message || "¿Confirmar?", { title: "Confirmar", okText: "Aceptar", cancelText: "Cancelar", danger: true })
+      : true;
+    if (!ok) return;
+    const form = btn.form || btn.closest('form');
+    if (form) form.submit();
   }
 </script>
 {% endblock %}

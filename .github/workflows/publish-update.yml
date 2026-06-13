@@ -1,0 +1,64 @@
+name: Publicar actualización (backend OTA)
+
+# Al pushear cambios del backend a main, empaqueta app.py + templates + static
+# en un único backend.json y publica una "release" en ESTE mismo repo (público).
+# El launcher del cliente la baja al abrir y se actualiza solo (sin reinstalar).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app.py"
+      - "templates/**"
+      - "static/**"
+  workflow_dispatch:
+
+# Necesario para que el token integrado pueda crear releases en este repo.
+permissions:
+  contents: write
+
+# Evita publicar dos veces en simultáneo
+concurrency:
+  group: publish-update
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Calcular build (epoch monotónico)
+        id: build
+        run: echo "build=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Armar backend.json
+        env:
+          BUILD: ${{ steps.build.outputs.build }}
+        run: |
+          python3 - <<'PY'
+          import json, glob, os
+          files = {}
+          paths = ["app.py", "static/app.js", "static/app.css"] + sorted(glob.glob("templates/*.html"))
+          for p in paths:
+              if os.path.exists(p):
+                  with open(p, encoding="utf-8") as f:
+                      files[p.replace("\\", "/")] = f.read()
+          out = {"build": int(os.environ["BUILD"]), "files": files}
+          with open("backend.json", "w", encoding="utf-8") as f:
+              json.dump(out, f, ensure_ascii=False)
+          print("backend.json con", len(files), "archivos, build", out["build"])
+          PY
+
+      - name: Publicar release (en este mismo repo)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD: ${{ steps.build.outputs.build }}
+        run: |
+          gh release create "b$BUILD" backend.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "backend b$BUILD" \
+            --notes "Actualización automática del backend (build $BUILD)" \
+          || gh release upload "b$BUILD" backend.json --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Publicado b$BUILD en $GITHUB_REPOSITORY"

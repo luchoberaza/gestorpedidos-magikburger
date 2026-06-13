@@ -1,0 +1,47 @@
+{
+  "name": "magikburger-launcher",
+  "version": "1.0.1",
+  "private": true,
+  "main": "main.js",
+  "description": "Launcher de escritorio para MagikBurger (misma UI web + backend auto-start)",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.magikburger.launcher",
+    "productName": "MagikBurger Launcher",
+    "artifactName": "MagikBurger-Launcher-Setup-${version}.exe",
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../app.py",
+        "to": "backend_app/app.py"
+      },
+      {
+        "from": "../templates",
+        "to": "backend_app/templates"
+      },
+      {
+        "from": "../static",
+        "to": "backend_app/static"
+      },
+      {
+        "from": "../magikburger.db",
+        "to": "backend_app/magikburger.db"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}

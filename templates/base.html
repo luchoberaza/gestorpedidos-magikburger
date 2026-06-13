@@ -24,8 +24,218 @@
   #}
   {% block content %}{% block body %}{% endblock %}{% endblock %}
 
+  {#
+    Dialogs globales (NO usamos alert/confirm/prompt nativos porque en Electron
+    pueden dejar el teclado sin foco). Estos modales quedan ocultos y no
+    cambian el diseño.
+  #}
+  <div class="modal fade" id="mbAlertModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-magik">
+        <div class="modal-header modal-magik-header">
+          <h5 class="modal-title" id="mbAlertTitle" style="font-weight:900;">Aviso</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="mbAlertMsg" class="muted" style="white-space:pre-wrap;"></div>
+        </div>
+        <div class="modal-footer modal-magik-footer">
+          <button type="button" class="btn-ghost" data-bs-dismiss="modal">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="mbConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-magik">
+        <div class="modal-header modal-magik-header">
+          <h5 class="modal-title" id="mbConfirmTitle" style="font-weight:900;">Confirmar</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="mbConfirmMsg" class="muted" style="white-space:pre-wrap;"></div>
+        </div>
+        <div class="modal-footer modal-magik-footer d-flex justify-content-end gap-2">
+          <button type="button" class="btn-ghost" id="mbConfirmCancel" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn-danger-soft" id="mbConfirmOk">Aceptar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="mbPromptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-magik">
+        <div class="modal-header modal-magik-header">
+          <h5 class="modal-title" id="mbPromptTitle" style="font-weight:900;">Ingresar</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="mbPromptMsg" class="muted" style="white-space:pre-wrap;"></div>
+          <label class="form-label muted mt-2" id="mbPromptLabel">Contraseña</label>
+          <input id="mbPromptInput" type="password" class="form-control" autocomplete="current-password" />
+        </div>
+        <div class="modal-footer modal-magik-footer d-flex justify-content-end gap-2">
+          <button type="button" class="btn-ghost" id="mbPromptCancel" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn-magik" id="mbPromptOk">Continuar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- JS al final -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // Dialog helper (Promise-based) para no usar alert/confirm/prompt nativos.
+    // Evita que Electron se quede sin foco de teclado.
+    window.MBDialog = (() => {
+      const byId = (id) => document.getElementById(id);
+
+      function _safeModal(id){
+        const el = byId(id);
+        if (!el || !window.bootstrap) return null;
+        return bootstrap.Modal.getOrCreateInstance(el);
+      }
+
+      function alert(message, opts = {}) {
+        return new Promise((resolve) => {
+          const modal = _safeModal('mbAlertModal');
+          if (!modal) { console.log(message); return resolve(); }
+
+          byId('mbAlertTitle').textContent = opts.title || 'Aviso';
+          byId('mbAlertMsg').textContent = message || '';
+
+          const el = byId('mbAlertModal');
+          let done = false;
+          const finish = () => { if (done) return; done = true; cleanup(); resolve(); };
+          const cleanup = () => el.removeEventListener('hidden.bs.modal', finish);
+
+          el.addEventListener('hidden.bs.modal', finish);
+          modal.show();
+        });
+      }
+
+      function confirm(message, opts = {}) {
+        return new Promise((resolve) => {
+          const modal = _safeModal('mbConfirmModal');
+          if (!modal) { console.log(message); return resolve(false); }
+
+          byId('mbConfirmTitle').textContent = opts.title || 'Confirmar';
+          byId('mbConfirmMsg').textContent = message || '';
+          const okBtn = byId('mbConfirmOk');
+          const cancelBtn = byId('mbConfirmCancel');
+
+          okBtn.textContent = opts.okText || 'Aceptar';
+          cancelBtn.textContent = opts.cancelText || 'Cancelar';
+
+          // Estética: si es peligroso usamos rojo; si no, usamos btn-magik
+          okBtn.classList.remove('btn-magik', 'btn-danger-soft');
+          okBtn.classList.add(opts.danger ? 'btn-danger-soft' : 'btn-magik');
+
+          const el = byId('mbConfirmModal');
+          let done = false;
+          const finish = (val) => {
+            if (done) return;
+            done = true;
+            cleanup();
+            resolve(val);
+          };
+          const onOk = () => { modal.hide(); finish(true); };
+          const onCancel = () => { modal.hide(); finish(false); };
+          const onHidden = () => finish(false);
+
+          function cleanup(){
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            el.removeEventListener('hidden.bs.modal', onHidden);
+          }
+
+          okBtn.addEventListener('click', onOk);
+          cancelBtn.addEventListener('click', onCancel);
+          el.addEventListener('hidden.bs.modal', onHidden);
+          modal.show();
+        });
+      }
+
+      function promptPassword(message, opts = {}) {
+        return new Promise((resolve) => {
+          const modal = _safeModal('mbPromptModal');
+          if (!modal) { console.log(message); return resolve(null); }
+
+          byId('mbPromptTitle').textContent = opts.title || 'Contraseña';
+          byId('mbPromptMsg').textContent = message || '';
+          byId('mbPromptLabel').textContent = opts.label || 'Contraseña admin';
+
+          const input = byId('mbPromptInput');
+          const okBtn = byId('mbPromptOk');
+          const cancelBtn = byId('mbPromptCancel');
+
+          okBtn.textContent = opts.okText || 'Continuar';
+          cancelBtn.textContent = opts.cancelText || 'Cancelar';
+
+          input.value = '';
+
+          const el = byId('mbPromptModal');
+          let done = false;
+          const finish = (val) => {
+            if (done) return;
+            done = true;
+            cleanup();
+            resolve(val);
+          };
+
+          const onShown = () => {
+            try { input.focus(); input.select(); } catch (e) {}
+          };
+          const onOk = () => {
+            const v = (input.value || '').trim();
+            modal.hide();
+            finish(v || null);
+          };
+          const onCancel = () => {
+            modal.hide();
+            finish(null);
+          };
+          const onHidden = () => finish(null);
+          const onKey = (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+          };
+
+          function cleanup(){
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            el.removeEventListener('shown.bs.modal', onShown);
+            el.removeEventListener('hidden.bs.modal', onHidden);
+            input.removeEventListener('keydown', onKey);
+          }
+
+          okBtn.addEventListener('click', onOk);
+          cancelBtn.addEventListener('click', onCancel);
+          el.addEventListener('shown.bs.modal', onShown);
+          el.addEventListener('hidden.bs.modal', onHidden);
+          input.addEventListener('keydown', onKey);
+
+          modal.show();
+        });
+      }
+
+      return { alert, confirm, promptPassword };
+    })();
+
+    // Seguridad: si algún modal deja un backdrop/estado colgado, lo limpiamos
+    // cuando NO queda ningún modal visible.
+    document.addEventListener('hidden.bs.modal', () => {
+      setTimeout(() => {
+        if (document.querySelectorAll('.modal.show').length > 0) return;
+        document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('overflow');
+        document.body.style.removeProperty('padding-right');
+      }, 0);
+    });
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

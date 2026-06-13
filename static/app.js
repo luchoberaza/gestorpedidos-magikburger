@@ -10,7 +10,8 @@ const Magik = (() => {
     address: "",
     courier_id: "",
     payment_method: "cash",
-    items: [] // { product_id, qty, removed_ingredient_ids:[], added_ingredient_ids:[] }
+    items: [], // { product_id, qty, removed_ingredient_ids:[], added_ingredient_ids:[], promo_group?, promo_id?, promo_name?, promo_price_cents? }
+    adjustments: [] // { label, amount_cents }  (amount_cents puede ser negativo)
   };
 
   // ===== Edit order (modal) =====
@@ -20,8 +21,12 @@ const Magik = (() => {
     address: "",
     courier_id: "",
     payment_method: "cash",
-    items: []
+    items: [],
+    adjustments: []
   };
+
+  // Contexto activo para el modal de ajuste ("current" | "edit")
+  let adjustContext = "current";
 
   // ===== Helpers =====
   const $ = (id) => document.getElementById(id);
@@ -29,7 +34,13 @@ const Magik = (() => {
   const money = (cents) => Math.round((cents || 0) / 100).toString();
 
   function toast(msg) {
-    alert(msg);
+    // NO usar alert() nativo (en Electron puede dejar el foco de teclado roto)
+    if (window.MBDialog && typeof window.MBDialog.alert === "function") {
+      window.MBDialog.alert(String(msg || ""), { title: "MagikBurger" });
+      return;
+    }
+    // Fallback silencioso
+    console.log(msg);
   }
 
   async function fetchJson(url, opts) {
@@ -176,8 +187,22 @@ const Magik = (() => {
     const q = ($("search")?.value || "").trim().toLowerCase();
     wrap.innerHTML = "";
 
+    // Promos primero (combos)
+    (BOOT.promos || [])
+      .filter(pr => !q || (pr.name || "").toLowerCase().includes(q))
+      .forEach(pr => {
+        const el = document.createElement("div");
+        el.className = "product-tile promo-tile";
+        el.onclick = () => addPromoTo(current, pr.id, renderCurrent);
+        el.innerHTML = `
+          <p class="product-name">🎁 ${pr.name}</p>
+          <p class="product-price">$ ${money(pr.price_cents)}</p>
+        `;
+        wrap.appendChild(el);
+      });
+
     (BOOT.products || [])
-      .filter(p => !q || (p.name || "").toLowerCase().includes(q))
+      .filter(p => p.active !== 0 && (!q || (p.name || "").toLowerCase().includes(q)))
       .forEach(p => {
         const el = document.createElement("div");
         el.className = "product-tile";
@@ -188,6 +213,32 @@ const Magik = (() => {
         `;
         wrap.appendChild(el);
       });
+  }
+
+  // Agrega una promo (sus componentes) a un pedido (current o edit)
+  function addPromoTo(state, promoId, rerender) {
+    const promo = (BOOT.promos || []).find(p => p.id === promoId);
+    if (!promo) return;
+    const comps = promo.component_product_ids || [];
+    if (!comps.length) {
+      toast("Esta promo no tiene productos configurados. Editala en Admin → Promos.");
+      return;
+    }
+    if (state === current) ensureTmpId();
+    const group = "PR-" + Math.floor(100000 + Math.random() * 900000);
+    comps.forEach(pid => {
+      state.items.push({
+        product_id: pid,
+        qty: 1,
+        removed_ingredient_ids: [],
+        added_ingredient_ids: [],
+        promo_group: group,
+        promo_id: promo.id,
+        promo_name: promo.name,
+        promo_price_cents: promo.price_cents
+      });
+    });
+    if (typeof rerender === "function") rerender();
   }
 
   function renderEditCouriers() {
@@ -215,8 +266,25 @@ const Magik = (() => {
     const q = ($("editSearch")?.value || "").trim().toLowerCase();
     wrap.innerHTML = "";
 
+    // Promos primero (combos)
+    (BOOT.promos || [])
+      .filter(pr => !q || (pr.name || "").toLowerCase().includes(q))
+      .forEach(pr => {
+        const el = document.createElement("div");
+        el.className = "product-tile promo-tile";
+        el.onclick = () => {
+          if (!edit.orderId) return;
+          addPromoTo(edit, pr.id, renderEditItems);
+        };
+        el.innerHTML = `
+          <p class="product-name">🎁 ${pr.name}</p>
+          <p class="product-price">$ ${money(pr.price_cents)}</p>
+        `;
+        wrap.appendChild(el);
+      });
+
     (BOOT.products || [])
-      .filter(p => !q || (p.name || "").toLowerCase().includes(q))
+      .filter(p => p.active !== 0 && (!q || (p.name || "").toLowerCase().includes(q)))
       .forEach(p => {
         const el = document.createElement("div");
         el.className = "product-tile";
@@ -264,7 +332,8 @@ const Magik = (() => {
     const ingMap = byId(BOOT.ingredients || []);
 
     const p = prodMap[item.product_id];
-    let total = p ? (p.price_cents || 0) : 0;
+    // En una promo, el precio base del componente NO cuenta (lo define la promo).
+    let total = item.promo_group ? 0 : (p ? (p.price_cents || 0) : 0);
 
     (item.added_ingredient_ids || []).forEach(iid => {
       const ing = ingMap[iid];
@@ -275,60 +344,175 @@ const Magik = (() => {
     return total * qty;
   }
 
-  function calcTotal() {
-    return (current.items || []).reduce((acc, it) => acc + calcItemTotal(it), 0);
+  // Suma de extras + bases (sin promos) + precio de cada promo una sola vez por grupo
+  function calcItemsTotal(items) {
+    let total = (items || []).reduce((acc, it) => acc + calcItemTotal(it), 0);
+    const seen = new Set();
+    (items || []).forEach(it => {
+      if (it.promo_group && !seen.has(it.promo_group)) {
+        seen.add(it.promo_group);
+        total += (it.promo_price_cents || 0);
+      }
+    });
+    return total;
   }
 
-  function renderCurrent() {
-    const tmp = $("tmpOrderId");
-    const total = $("currentTotal");
-    const wrap = $("currentItems");
+  function calcAdjustments(adjs) {
+    return (adjs || []).reduce((acc, a) => acc + (parseInt(a.amount_cents || 0, 10) || 0), 0);
+  }
 
-    if (tmp) tmp.textContent = current.tmpId || "—";
-    if (total) total.textContent = money(calcTotal());
+  function calcTotal() {
+    return calcItemsTotal(current.items) + calcAdjustments(current.adjustments);
+  }
+
+  // ===== Render compartido de ítems (con agrupación de promos) =====
+  function buildRenderBlocks(items) {
+    const blocks = [];
+    const groupIdx = {};
+    (items || []).forEach((it, idx) => {
+      if (it.promo_group) {
+        if (!(it.promo_group in groupIdx)) {
+          groupIdx[it.promo_group] = blocks.length;
+          blocks.push({
+            type: "promo",
+            promo_group: it.promo_group,
+            promo_name: it.promo_name,
+            promo_price_cents: it.promo_price_cents || 0,
+            comps: []
+          });
+        }
+        blocks[groupIdx[it.promo_group]].comps.push({ it, idx });
+      } else {
+        blocks.push({ type: "item", it, idx });
+      }
+    });
+    return blocks;
+  }
+
+  function modsHtml(it, ingMap) {
+    const removed = (it.removed_ingredient_ids || []).map(id => ingMap[id]?.name).filter(Boolean);
+    const added = (it.added_ingredient_ids || []).map(id => ingMap[id]).filter(Boolean);
+    const mods = [];
+    removed.forEach(r => mods.push(`<span class="mod remove">Sin ${r}</span>`));
+    added.forEach(a => mods.push(`<span class="mod add">+ ${a.name} ($${money(a.extra_price_cents)})</span>`));
+    return mods.join("") || `<span class="muted" style="font-size:12px;">Sin modificaciones</span>`;
+  }
+
+  function renderItemsInto(wrap, state, rerender) {
     if (!wrap) return;
-
     wrap.innerHTML = "";
 
-    if (!current.items.length) {
+    if (!state.items.length) {
       wrap.innerHTML = `<div class="muted" style="font-size:13px;">Todavía no agregaste productos. Elegí uno a la izquierda</div>`;
       return;
     }
 
     const prodMap = byId(BOOT.products || []);
     const ingMap = byId(BOOT.ingredients || []);
+    const blocks = buildRenderBlocks(state.items);
 
-    current.items.forEach((it, idx) => {
-      const p = prodMap[it.product_id];
-
-      const removed = (it.removed_ingredient_ids || []).map(id => ingMap[id]?.name).filter(Boolean);
-      const added = (it.added_ingredient_ids || []).map(id => ingMap[id]).filter(Boolean);
-
-      const mods = [];
-      removed.forEach(r => mods.push(`<span class="mod remove">Sin ${r}</span>`));
-      added.forEach(a => mods.push(`<span class="mod add">+ ${a.name} ($${money(a.extra_price_cents)})</span>`));
-
+    blocks.forEach(block => {
       const el = document.createElement("div");
       el.className = "item";
-      el.innerHTML = `
-        <div class="d-flex align-items-start justify-content-between gap-2">
-          <div>
-            <h6>${p ? p.name : "Producto"}</h6>
-            <div class="muted" style="font-size:12px;">Ítem: $ ${money(calcItemTotal(it))}</div>
-          </div>
-          <div class="d-flex gap-2">
-            <button class="btn-ghost" type="button" data-action="edit">Editar</button>
-            <button class="btn-danger-soft" type="button" data-action="del">X</button>
-          </div>
-        </div>
-        <div class="mods">${mods.join("") || `<span class="muted" style="font-size:12px;">Sin modificaciones</span>`}</div>
-      `;
 
-      el.querySelector('[data-action="edit"]').onclick = () => editItem(idx);
-      el.querySelector('[data-action="del"]').onclick = () => removeItem(idx);
+      if (block.type === "promo") {
+        el.style.borderColor = "rgba(139,92,246,.35)";
+        el.style.background = "rgba(139,92,246,.06)";
+
+        const extras = block.comps.reduce((acc, c) => acc + calcItemTotal(c.it), 0);
+        const promoTotal = (block.promo_price_cents || 0) + extras;
+
+        const compsHtml = block.comps.map(c => {
+          const p = prodMap[c.it.product_id];
+          return `
+            <div class="promo-comp" style="border:1px solid rgba(255,255,255,.10); border-radius:12px; padding:8px 10px;">
+              <div class="d-flex align-items-start justify-content-between gap-2">
+                <h6 style="margin:0; font-size:13px;">${p ? p.name : "Producto"}</h6>
+                <button class="btn-ghost" type="button" data-editcomp="${c.idx}" style="padding:.35rem .6rem;">Editar</button>
+              </div>
+              <div class="mods">${modsHtml(c.it, ingMap)}</div>
+            </div>`;
+        }).join("");
+
+        el.innerHTML = `
+          <div class="d-flex align-items-start justify-content-between gap-2">
+            <div>
+              <h6>🎁 ${block.promo_name || "Promo"}</h6>
+              <div class="muted" style="font-size:12px;">Promo: $ ${money(promoTotal)}</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn-danger-soft" type="button" data-action="delpromo">Quitar</button>
+            </div>
+          </div>
+          <div style="display:grid; gap:8px; margin-top:8px;">${compsHtml}</div>
+        `;
+
+        el.querySelector('[data-action="delpromo"]').onclick = () => {
+          state.items = state.items.filter(x => x.promo_group !== block.promo_group);
+          rerender();
+        };
+        el.querySelectorAll('[data-editcomp]').forEach(btn => {
+          btn.onclick = () => {
+            const i = parseInt(btn.getAttribute("data-editcomp"), 10);
+            openModsForItem(state.items[i], rerender);
+          };
+        });
+      } else {
+        const it = block.it;
+        const idx = block.idx;
+        const p = prodMap[it.product_id];
+        el.innerHTML = `
+          <div class="d-flex align-items-start justify-content-between gap-2">
+            <div>
+              <h6>${p ? p.name : "Producto"}</h6>
+              <div class="muted" style="font-size:12px;">Ítem: $ ${money(calcItemTotal(it))}</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn-ghost" type="button" data-action="edit">Editar</button>
+              <button class="btn-danger-soft" type="button" data-action="del">X</button>
+            </div>
+          </div>
+          <div class="mods">${modsHtml(it, ingMap)}</div>
+        `;
+        el.querySelector('[data-action="edit"]').onclick = () => openModsForItem(state.items[idx], rerender);
+        el.querySelector('[data-action="del"]').onclick = () => { state.items.splice(idx, 1); rerender(); };
+      }
 
       wrap.appendChild(el);
     });
+  }
+
+  function renderAdjustmentsInto(wrap, state, rerender) {
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    if (!state.adjustments || !state.adjustments.length) {
+      wrap.style.display = "none";
+      return;
+    }
+    wrap.style.display = "";
+    state.adjustments.forEach((adj, i) => {
+      const cents = parseInt(adj.amount_cents || 0, 10) || 0;
+      const neg = cents < 0;
+      const row = document.createElement("div");
+      row.className = "adj-row";
+      row.innerHTML = `
+        <div style="font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${adj.label || "Ajuste"}</div>
+        <div class="d-flex align-items-center gap-2">
+          <div style="font-weight:900; white-space:nowrap; color:${neg ? "#fca5a5" : "#86efac"};">${neg ? "−" : "+"} $ ${money(Math.abs(cents))}</div>
+          <button class="btn-danger-soft" type="button" style="padding:.2rem .5rem;" data-deladj="${i}">X</button>
+        </div>`;
+      row.querySelector('[data-deladj]').onclick = () => { state.adjustments.splice(i, 1); rerender(); };
+      wrap.appendChild(row);
+    });
+  }
+
+  function renderCurrent() {
+    const tmp = $("tmpOrderId");
+    const total = $("currentTotal");
+    if (tmp) tmp.textContent = current.tmpId || "—";
+    if (total) total.textContent = money(calcTotal());
+    renderItemsInto($("currentItems"), current, renderCurrent);
+    renderAdjustmentsInto($("currentAdjustments"), current, renderCurrent);
   }
 
   // ===== Extras qty helpers =====
@@ -501,58 +685,14 @@ const Magik = (() => {
   }
 
   function calcEditTotal() {
-    return (edit.items || []).reduce((acc, it) => acc + calcItemTotal(it), 0);
+    return calcItemsTotal(edit.items) + calcAdjustments(edit.adjustments);
   }
 
   function renderEditItems() {
     const total = $("editTotal");
-    const wrap = $("editItems");
     if (total) total.textContent = money(calcEditTotal());
-    if (!wrap) return;
-
-    wrap.innerHTML = "";
-    if (!edit.items.length) {
-      wrap.innerHTML = `<div class="muted" style="font-size:13px;">Pedido vacío.</div>`;
-      return;
-    }
-
-    const prodMap = byId(BOOT.products || []);
-    const ingMap = byId(BOOT.ingredients || []);
-
-    edit.items.forEach((it, idx) => {
-      const p = prodMap[it.product_id];
-
-      const removed = (it.removed_ingredient_ids || []).map(id => ingMap[id]?.name).filter(Boolean);
-      const added = (it.added_ingredient_ids || []).map(id => ingMap[id]).filter(Boolean);
-
-      const mods = [];
-      removed.forEach(r => mods.push(`<span class="mod remove">Sin ${r}</span>`));
-      added.forEach(a => mods.push(`<span class="mod add">+ ${a.name} ($${money(a.extra_price_cents)})</span>`));
-
-      const el = document.createElement("div");
-      el.className = "item";
-      el.innerHTML = `
-        <div class="d-flex align-items-start justify-content-between gap-2">
-          <div>
-            <h6>${p ? p.name : "Producto"}</h6>
-            <div class="muted" style="font-size:12px;">Ítem: $ ${money(calcItemTotal(it))}</div>
-          </div>
-          <div class="d-flex gap-2">
-            <button class="btn-ghost" type="button" data-action="edit">Editar</button>
-            <button class="btn-danger-soft" type="button" data-action="del">X</button>
-          </div>
-        </div>
-        <div class="mods">${mods.join("") || `<span class="muted" style="font-size:12px;">Sin modificaciones</span>`}</div>
-      `;
-
-      el.querySelector('[data-action="edit"]').onclick = () => editOrderItem(idx);
-      el.querySelector('[data-action="del"]').onclick = () => {
-        edit.items.splice(idx, 1);
-        renderEditItems();
-      };
-
-      wrap.appendChild(el);
-    });
+    renderItemsInto($("editItems"), edit, renderEditItems);
+    renderAdjustmentsInto($("editAdjustments"), edit, renderEditItems);
   }
 
   async function openEditOrder(orderId) {
@@ -566,11 +706,39 @@ const Magik = (() => {
     edit.phone = j.order.phone || "";
     edit.courier_id = (j.order.courier_id || "").toString();
     edit.payment_method = (j.order.payment_method || "cash");
-    edit.items = (j.items || []).map(it => ({
-      product_id: it.product_id,
-      qty: it.qty || 1,
-      removed_ingredient_ids: it.removed_ingredient_ids || [],
-      added_ingredient_ids: it.added_ingredient_ids || []
+    edit.items = (j.items || []).map(it => {
+      const base = {
+        product_id: it.product_id,
+        qty: it.qty || 1,
+        removed_ingredient_ids: it.removed_ingredient_ids || [],
+        added_ingredient_ids: it.added_ingredient_ids || []
+      };
+      if (it.promo_group) {
+        base.promo_group = it.promo_group;
+        base.promo_id = it.promo_id || 0;
+        base.promo_name = it.promo_name || "Promo";
+        base.promo_price_cents = it.promo_price_cents || 0;
+      }
+      return base;
+    });
+
+    // El precio de la promo viene sólo en el ítem ancla; lo unificamos en todo el grupo.
+    // Si la promo todavía existe, usamos su precio actual (igual que el servidor).
+    const promoById = byId(BOOT.promos || []);
+    const promoPrice = {};
+    edit.items.forEach(it => {
+      if (!it.promo_group) return;
+      let price = (it.promo_id && promoById[it.promo_id]) ? (promoById[it.promo_id].price_cents || 0) : 0;
+      if (!price) price = it.promo_price_cents || 0;
+      if (price > (promoPrice[it.promo_group] || 0)) promoPrice[it.promo_group] = price;
+    });
+    edit.items.forEach(it => {
+      if (it.promo_group) it.promo_price_cents = promoPrice[it.promo_group] || 0;
+    });
+
+    edit.adjustments = (j.adjustments || []).map(a => ({
+      label: a.label || "Ajuste",
+      amount_cents: parseInt(a.amount_cents || 0, 10) || 0
     }));
 
     const idEl = $("editOrderId");
@@ -608,7 +776,8 @@ const Magik = (() => {
       address: edit.address,
       courier_id: edit.courier_id ? parseInt(edit.courier_id, 10) : null,
       payment_method: getSelectedEditPayMethod(),
-      items: edit.items
+      items: edit.items,
+      adjustments: edit.adjustments
     };
 
     const j = await fetchJson(`/api/orders/${edit.orderId}/update`, {
@@ -640,7 +809,8 @@ const Magik = (() => {
       address: "",
       courier_id: "",
       payment_method: current.payment_method || "cash",
-      items: []
+      items: [],
+      adjustments: []
     };
     const addr = $("addr");
     const phone = $("phone");
@@ -665,7 +835,8 @@ const Magik = (() => {
       address: current.address,
       courier_id: current.courier_id ? parseInt(current.courier_id, 10) : null,
       payment_method: getSelectedPayMethod(),
-      items: current.items
+      items: current.items,
+      adjustments: current.adjustments
     };
 
     const j = await fetchJson("/api/orders", {
@@ -679,7 +850,7 @@ const Magik = (() => {
     if (!j._http_ok || !j.ok) return toast(j.error || "No se pudo guardar el pedido.");
 
     const oid = j.id || j.order_id;
-    if (oid) window.open(`/orders/${oid}/ticket`, "_blank");
+    if (oid) printTicket(oid);
 
     resetCurrent();
     await refreshOrders();
@@ -751,7 +922,7 @@ const Magik = (() => {
         </div>
 
         <div class="d-flex gap-2 mt-2">
-          <a class="btn-ghost" style="padding:.45rem .7rem;" target="_blank" href="/orders/${o.id}/ticket">Imprimir</a>
+          <button class="btn-ghost" type="button" style="padding:.45rem .7rem;" data-action="print">Imprimir</button>
           <button class="btn-ghost" type="button" style="padding:.45rem .7rem;" data-action="edit">Editar</button>
           <button class="btn-danger-soft" type="button" style="padding:.45rem .7rem;" data-action="delete">Eliminar</button>
         </div>
@@ -779,6 +950,9 @@ const Magik = (() => {
         }
       };
 
+      const printBtn = el.querySelector('[data-action="print"]');
+      if (printBtn) printBtn.onclick = () => printTicket(o.id);
+
       const editBtn = el.querySelector('[data-action="edit"]');
       editBtn.onclick = async () => {
         editBtn.disabled = true;
@@ -788,7 +962,10 @@ const Magik = (() => {
 
       const delBtn = el.querySelector('[data-action="delete"]');
       delBtn.onclick = async () => {
-        if (!confirm("¿Eliminar este pedido?")) return;
+        const ok = (window.MBDialog && typeof window.MBDialog.confirm === "function")
+          ? await window.MBDialog.confirm("¿Eliminar este pedido?", { title: "Eliminar pedido", okText: "Eliminar", cancelText: "Cancelar", danger: true })
+          : true;
+        if (!ok) return;
 
         delBtn.disabled = true;
         const j = await fetchJson(`/api/orders/${o.id}/delete`, { method: "POST" });
@@ -831,7 +1008,12 @@ const Magik = (() => {
 
     const totalC = liquidation.total_cents ?? 0;
     const transferC = liquidation.transfer_cents ?? 0;
-    const cashToRenderC = liquidation.cash_to_render_cents ?? (totalC - transferC);
+    const cashFloatC = liquidation.cash_float_total_cents ?? 0;
+    const cashToRenderC = liquidation.cash_to_render_cents ?? (totalC - transferC + cashFloatC);
+
+    // Mostramos los "Cambios" (cambio por repartidor) para que el número sea coherente:
+    // Efectivo a rendir = Total − Transferencia + Cambios.
+    const cambiosTxt = cashFloatC > 0 ? ` • Cambios: $ ${money(cashFloatC)}` : "";
 
     top.innerHTML = `
       <div class="summary-pill">
@@ -841,7 +1023,7 @@ const Magik = (() => {
         </div>
         <div style="text-align:right;">
           <b>$ ${money(totalC)}</b>
-          <div class="muted" style="font-size:12px;">Transf: $ ${money(transferC)} • Efectivo a rendir: $ ${money(cashToRenderC)}</div>
+          <div class="muted" style="font-size:12px;">Transf: $ ${money(transferC)}${cambiosTxt} • Efectivo a rendir: $ ${money(cashToRenderC)}</div>
         </div>
       </div>
     `;
@@ -858,6 +1040,10 @@ const Magik = (() => {
       const tot = c.total_cents ?? 0;
       const cashC = c.cash_cents ?? tot;
       const trC = c.transfer_cents ?? 0;
+      const floatC = c.cash_float_cents ?? 0;
+
+      // El "Efectivo" del repartidor ya incluye su cambio; lo aclaramos para que cierre.
+      const cambioTxt = floatC > 0 ? ` • Cambio: $ ${money(floatC)}` : "";
 
       const el = document.createElement("div");
       el.className = "summary-pill";
@@ -868,7 +1054,7 @@ const Magik = (() => {
         </div>
         <div style="text-align:right;">
           <b>$ ${money(tot)}</b>
-          <div class="muted" style="font-size:12px;">Efectivo: $ ${money(cashC)} • Transf: $ ${money(trC)}</div>
+          <div class="muted" style="font-size:12px;">Efectivo: $ ${money(cashC)} • Transf: $ ${money(trC)}${cambioTxt}</div>
         </div>
       `;
       wrap.appendChild(el);
@@ -880,15 +1066,178 @@ const Magik = (() => {
     renderSummary();
   }
 
+  // ===== Ajustes (envío / descuentos) =====
+  function parsePesosToCents(raw) {
+    let s = String(raw || "").replace(/\$/g, "").replace(/\s/g, "");
+    if (!s) return null;
+    const neg = s.trim().startsWith("-");
+    s = s.replace(/[+\-]/g, "");
+    if (s.indexOf(",") >= 0 && s.indexOf(".") >= 0) s = s.replace(/\./g, "").replace(",", ".");
+    else if (s.indexOf(",") >= 0) s = s.replace(",", ".");
+    const pesos = parseFloat(s);
+    if (isNaN(pesos)) return null;
+    let cents = Math.round(pesos * 100);
+    if (neg) cents = -cents;
+    return cents;
+  }
+
+  function openAdjust(context, preset) {
+    adjustContext = context;
+    preset = preset || {};
+    const labelEl = $("adjustLabel");
+    const amountEl = $("adjustAmount");
+    const titleEl = $("adjustTitle");
+    if (titleEl) titleEl.textContent = preset.title || "Agregar ajuste";
+    if (labelEl) labelEl.value = preset.label || "";
+    if (amountEl) amountEl.value = (preset.amount != null && preset.amount !== "") ? preset.amount : "";
+    const modalEl = document.getElementById("adjustModal");
+    if (!modalEl || !window.bootstrap) return;
+    bindModalBackdropFixOnce("adjustModal");
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+    setTimeout(() => {
+      try { (preset.focusAmount ? amountEl : labelEl).focus(); } catch (e) {}
+    }, 150);
+  }
+
+  function deliveryFeeDefault() {
+    const c = (BOOT && BOOT.settings && BOOT.settings.delivery_fee_cents) || 0;
+    return c > 0 ? Math.round(c / 100) : "";
+  }
+
+  function cobrarEnvio() {
+    openAdjust("current", { title: "Cobrar envío", label: "Envío", amount: deliveryFeeDefault(), focusAmount: true });
+  }
+  function agregarAjuste() {
+    openAdjust("current", { title: "Agregar ajuste" });
+  }
+  function cobrarEnvioEdit() {
+    openAdjust("edit", { title: "Cobrar envío", label: "Envío", amount: deliveryFeeDefault(), focusAmount: true });
+  }
+  function agregarAjusteEdit() {
+    openAdjust("edit", { title: "Agregar ajuste" });
+  }
+
+  function confirmAdjust() {
+    const labelEl = $("adjustLabel");
+    const amountEl = $("adjustAmount");
+    let label = (labelEl?.value || "").trim();
+    const cents = parsePesosToCents(amountEl?.value || "");
+    if (cents === null) return toast("Ingresá un monto válido (ej: 500 o -200).");
+    if (cents === 0) return toast("El monto no puede ser 0.");
+    if (!label) label = (cents < 0 ? "Descuento" : "Ajuste");
+
+    const state = (adjustContext === "edit") ? edit : current;
+    state.adjustments.push({ label: label.slice(0, 60), amount_cents: cents });
+
+    // Si es un envío positivo, lo recordamos como valor por defecto.
+    if (label.toLowerCase().indexOf("env") >= 0 && cents > 0) {
+      if (!BOOT.settings) BOOT.settings = {};
+      BOOT.settings.delivery_fee_cents = cents;
+      fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delivery_fee_cents: cents })
+      }).catch(() => {});
+    }
+
+    const modalEl = document.getElementById("adjustModal");
+    if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+
+    if (adjustContext === "edit") renderEditItems(); else renderCurrent();
+  }
+
+  // ===== Impresión de ticket (sin abrir ventana/app nueva) =====
+  function getTicketCopies() {
+    let n = parseInt((BOOT && BOOT.settings && BOOT.settings.ticket_copies) || 1, 10) || 1;
+    return Math.max(1, Math.min(n, 10));
+  }
+
+  function renderCopies() {
+    const el = $("ticketCopiesVal");
+    if (el) el.textContent = getTicketCopies();
+  }
+
+  function changeCopies(delta) {
+    let n = getTicketCopies() + delta;
+    n = Math.max(1, Math.min(n, 10));
+    if (!BOOT.settings) BOOT.settings = {};
+    BOOT.settings.ticket_copies = n;
+    renderCopies();
+    fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticket_copies: n })
+    }).catch(() => {});
+  }
+
+  function printTicket(orderId, copies) {
+    if (!orderId) return;
+    copies = parseInt(copies || getTicketCopies(), 10) || 1;
+    copies = Math.max(1, Math.min(copies, 10));
+
+    // Imprimimos dentro de un iframe oculto: NO abre ventana ni app nueva.
+    let frame = document.getElementById("printFrame");
+    if (frame) frame.remove();
+    frame = document.createElement("iframe");
+    frame.id = "printFrame";
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.position = "fixed";
+    frame.style.width = "0";
+    frame.style.height = "0";
+    frame.style.border = "0";
+    frame.style.right = "0";
+    frame.style.bottom = "0";
+    frame.style.opacity = "0";
+    frame.src = `/orders/${orderId}/ticket?copies=${copies}`;
+    frame.onload = () => {
+      try {
+        const w = frame.contentWindow;
+        w.focus();
+        w.print();
+      } catch (e) {
+        // Fallback: navegar al ticket con autoprint en la misma ventana.
+        window.location.href = `/orders/${orderId}/ticket?copies=${copies}&autoprint=1`;
+      }
+    };
+    document.body.appendChild(frame);
+  }
+
   // ===== Init =====
   async function init() {
     await loadBootstrap();
     renderCouriers();
     renderProducts();
     renderCurrent();
+    renderCopies();
 
     const search = $("search");
     if (search) search.addEventListener("input", renderProducts);
+
+    // Copias de ticket (persistido)
+    const cMinus = $("copiesMinus");
+    const cPlus = $("copiesPlus");
+    if (cMinus) cMinus.addEventListener("click", () => changeCopies(-1));
+    if (cPlus) cPlus.addEventListener("click", () => changeCopies(1));
+
+    // Modal de ajuste
+    bindModalBackdropFixOnce("adjustModal");
+    const adjConfirm = $("adjustConfirm");
+    if (adjConfirm) adjConfirm.addEventListener("click", confirmAdjust);
+    const adjAmount = $("adjustAmount");
+    if (adjAmount) adjAmount.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); confirmAdjust(); }
+    });
+
+    // Botones de ajuste (pedido nuevo y edición)
+    const bEnvio = $("btnEnvio");
+    const bAjuste = $("btnAjuste");
+    if (bEnvio) bEnvio.addEventListener("click", cobrarEnvio);
+    if (bAjuste) bAjuste.addEventListener("click", agregarAjuste);
+    const bEnvioEdit = $("btnEnvioEdit");
+    const bAjusteEdit = $("btnAjusteEdit");
+    if (bEnvioEdit) bEnvioEdit.addEventListener("click", cobrarEnvioEdit);
+    if (bAjusteEdit) bAjusteEdit.addEventListener("click", agregarAjusteEdit);
 
     const bNew = $("btnViewNew");
     const bOrders = $("btnViewOrders");
@@ -918,6 +1267,7 @@ const Magik = (() => {
     const editClear = $("editClear");
     if (editClear) editClear.addEventListener("click", () => {
       edit.items = [];
+      edit.adjustments = [];
       renderEditItems();
     });
 
@@ -933,5 +1283,12 @@ const Magik = (() => {
     renderProducts,
     saveOrder,
     resetCurrent,
+    cobrarEnvio,
+    agregarAjuste,
+    cobrarEnvioEdit,
+    agregarAjusteEdit,
+    confirmAdjust,
+    printTicket,
+    changeCopies,
   };
 })();

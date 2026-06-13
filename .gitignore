@@ -1,0 +1,25 @@
+# ===== Python =====
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# ===== Node / Electron (build) =====
+launcher/node_modules/
+launcher/dist/
+
+# ===== Backups y temporales =====
+*.bak
+magikburger.db.bak-*
+*.tmp
+*.log
+
+# ===== Artefactos viejos / dumps (no son fuente de la app) =====
+*.zip
+ProyectoMagikSinAPI v1.0/
+Elementos funcionales/
+
+# ===== Sistema operativo =====
+Thumbs.db
+.DS_Store
+desktop.ini

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Admin • Productos{% endblock %}
+{% block title %}Admin • Promos{% endblock %}
 
 {% block body %}
 <div class="topbar py-3">
@@ -8,13 +8,10 @@
       <div class="brand-badge">MB</div>
       <div class="brand-title">
         <b>Admin</b>
-        <small>Productos</small>
+        <small>Promos</small>
       </div>
 
-      {# ✅ Fijos a la izquierda: Limpiar pedidos + Salir #}
-      <form method="post"
-            action="{{ url_for('admin_clear_orders') }}"
-            style="margin:0;">
+      <form method="post" action="{{ url_for('admin_clear_orders') }}" style="margin:0;">
         <input type="hidden" name="password" value="">
         <button type="button" class="btn-danger-soft" onclick="MagikAdminClearOrders(this.form)">Limpiar pedidos</button>
       </form>
@@ -22,9 +19,8 @@
       <a class="btn-ghost" href="{{ url_for('admin_logout') }}">Salir</a>
     </div>
 
-    {# ✅ En admin NO mostramos "Pedidos" (no tiene sentido acá) #}
     <div class="d-flex gap-2">
-      <a class="btn-ghost" href="{{ url_for('admin_promos') }}">Promos</a>
+      <a class="btn-ghost" href="{{ url_for('admin_products') }}">Productos</a>
       <a class="btn-ghost" href="{{ url_for('admin_ingredients') }}">Ingredientes</a>
       <a class="btn-ghost" href="{{ url_for('admin_couriers') }}">Repartidores</a>
     </div>
@@ -36,33 +32,36 @@
     <div class="col-12 col-lg-5">
       <div class="glass">
         <div class="glass-header">
-          <h5>Crear producto</h5>
+          <h5>Crear promo</h5>
         </div>
         <div class="glass-body">
-          <form method="post" action="{{ url_for('admin_products_create') }}" class="row g-2">
+          <form method="post" action="{{ url_for('admin_promos_create') }}" class="row g-2">
             <div class="col-12">
               <label class="form-label muted mb-1">Nombre</label>
-              <input name="name" class="form-control" placeholder="Ej: Magik Triple" required>
+              <input name="name" class="form-control" placeholder="Ej: Promo 2 Dukis" required>
             </div>
             <div class="col-12">
-              <label class="form-label muted mb-1">Precio ($)</label>
-              <input name="price" class="form-control" placeholder="Ej: 520" value="0">
+              <label class="form-label muted mb-1">Precio final de la promo ($)</label>
+              <input name="price" class="form-control" inputmode="numeric" placeholder="Ej: 900" value="0">
             </div>
             <div class="col-12">
-              <label class="form-label muted mb-1">Ingredientes base</label>
+              <label class="form-label muted mb-1">Productos que la integran (cantidad)</label>
               <div class="glass" style="box-shadow:none;">
-                <div class="glass-body" style="max-height:220px; overflow:auto;">
-                  {% for ing in ingredients %}
+                <div class="glass-body" style="max-height:240px; overflow:auto;">
+                  {% for p in products %}
+                    {% if p.active == 1 %}
                     <div class="d-flex align-items-center justify-content-between mb-2">
-                      <div style="font-weight:700;">{{ ing.name }}</div>
-                      <input class="form-check-input" type="checkbox" name="base_ingredients" value="{{ ing.id }}">
+                      <div style="font-weight:700;">{{ p.name }} <span class="muted" style="font-weight:600;">(${{ p.price_cents // 100 }})</span></div>
+                      <input class="form-control" type="number" min="0" max="20" name="qty_{{ p.id }}" value="0" style="width:84px; text-align:center;">
                     </div>
+                    {% endif %}
                   {% endfor %}
                 </div>
               </div>
+              <div class="muted" style="font-size:11px; margin-top:4px;">Poné la cantidad de cada producto. Ej: una promo "2 Dukis" = Duki en 2. Cada componente se puede editar (ingredientes) al tomar el pedido.</div>
             </div>
             <div class="col-12">
-              <button class="btn-magik w-100" type="submit">Crear</button>
+              <button class="btn-magik w-100" type="submit">Crear promo</button>
             </div>
           </form>
         </div>
@@ -72,57 +71,58 @@
     <div class="col-12 col-lg-7">
       <div class="glass">
         <div class="glass-header">
-          <h5>Productos</h5>
+          <h5>Promos</h5>
           <span class="chip">Editar y activar/desactivar</span>
         </div>
         <div class="glass-body">
           <div class="row g-2">
-            {% for p in products %}
+            {% if not promos %}
+              <div class="muted" style="font-size:13px;">Todavía no hay promos. Creá una a la izquierda.</div>
+            {% endif %}
+            {% for pr in promos %}
             <div class="col-12">
               <div class="item">
-                <form method="post" action="{{ url_for('admin_products_update', pid=p.id) }}" class="row g-2">
+                <form method="post" action="{{ url_for('admin_promos_update', promo_id=pr.id) }}" class="row g-2">
                   <div class="col-12 col-md-6">
                     <label class="form-label muted mb-1">Nombre</label>
-                    <input name="name" class="form-control" value="{{ p.name }}">
+                    <input name="name" class="form-control" value="{{ pr.name }}">
                   </div>
                   <div class="col-6 col-md-3">
                     <label class="form-label muted mb-1">Precio ($)</label>
-                    <input name="price" class="form-control" value="{{ (p.price_cents // 100) }}">
+                    <input name="price" class="form-control" inputmode="numeric" value="{{ (pr.price_cents // 100) }}">
                   </div>
                   <div class="col-6 col-md-3">
-                    <label class="form-label muted mb-1">Activo</label>
+                    <label class="form-label muted mb-1">Activa</label>
                     <select name="active" class="form-select">
-                      <option value="1" {% if p.active==1 %}selected{% endif %}>Sí</option>
-                      <option value="0" {% if p.active==0 %}selected{% endif %}>No</option>
+                      <option value="1" {% if pr.active==1 %}selected{% endif %}>Sí</option>
+                      <option value="0" {% if pr.active==0 %}selected{% endif %}>No</option>
                     </select>
                   </div>
 
                   <div class="col-12">
-                    <label class="form-label muted mb-1">Ingredientes base</label>
+                    <label class="form-label muted mb-1">Productos que la integran (cantidad)</label>
                     <div class="glass" style="box-shadow:none;">
-                      <div class="glass-body" style="max-height:200px; overflow:auto;">
-                        {% set selected = base_map.get(p.id, []) %}
-                        {% for ing in ingredients %}
+                      <div class="glass-body" style="max-height:220px; overflow:auto;">
+                        {% set selected = comp_map.get(pr.id, []) %}
+                        {% for p in products %}
+                          {% if p.active == 1 or p.id in selected %}
+                          {% set n = selected|select('equalto', p.id)|list|length %}
                           <div class="d-flex align-items-center justify-content-between mb-2">
-                            <div style="font-weight:700;">{{ ing.name }}</div>
-                            <input class="form-check-input"
-                                   type="checkbox"
-                                   name="base_ingredients"
-                                   value="{{ ing.id }}"
-                                   {% if ing.id in selected %}checked{% endif %}>
+                            <div style="font-weight:700;">{{ p.name }} <span class="muted" style="font-weight:600;">(${{ p.price_cents // 100 }}){% if p.active != 1 %} · inactivo{% endif %}</span></div>
+                            <input class="form-control" type="number" min="0" max="20" name="qty_{{ p.id }}" value="{{ n }}" style="width:84px; text-align:center;">
                           </div>
+                          {% endif %}
                         {% endfor %}
                       </div>
                     </div>
                   </div>
 
-                  {# ✅ Botón BORRAR + Guardar (sin tocar diseño) #}
                   <div class="col-12 d-flex justify-content-end gap-2">
                     <button class="btn-danger-soft"
                             type="button"
-                            formaction="{{ url_for('admin_products_delete', pid=p.id) }}"
+                            formaction="{{ url_for('admin_promos_delete', promo_id=pr.id) }}"
                             formmethod="post"
-                            onclick="MagikAdminDeleteProduct(this, '{{ p.name|e }}');">
+                            onclick="MagikAdminDeletePromo(this, '{{ pr.name|e }}');">
                       Borrar
                     </button>
                     <button class="btn-magik" type="submit">Guardar cambios</button>
@@ -132,7 +132,6 @@
             </div>
             {% endfor %}
           </div>
-
         </div>
       </div>
     </div>
@@ -163,17 +162,16 @@
     form.submit();
   }
 
-  async function MagikAdminDeleteProduct(btn, name){
+  async function MagikAdminDeletePromo(btn, name){
     if (!btn) return;
-    const msg = `¿Seguro que querés borrar el producto "${name}"?\n\nSi ya fue usado en pedidos anteriores, no se puede borrar por historial: en ese caso quedará como INACTIVO.`;
+    const msg = `¿Seguro que querés borrar la promo "${name}"?`;
     const ok = (window.MBDialog && window.MBDialog.confirm)
-      ? await window.MBDialog.confirm(msg, { title: "Borrar producto", okText: "Borrar", cancelText: "Cancelar", danger: true })
+      ? await window.MBDialog.confirm(msg, { title: "Borrar promo", okText: "Borrar", cancelText: "Cancelar", danger: true })
       : true;
     if (!ok) return;
 
     const form = btn.form;
     if (!form) return;
-    // Respetar formaction/formmethod del botón original
     const action = btn.getAttribute('formaction') || form.action;
     const method = (btn.getAttribute('formmethod') || form.method || 'post');
     form.action = action;

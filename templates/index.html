@@ -93,10 +93,25 @@
           <div class="glass-body">
             <div id="currentItems"></div>
 
+            <div class="d-flex gap-2 mt-2">
+              <button id="btnEnvio" class="btn-ghost" type="button" style="flex:1;">🛵 Cobrar envío</button>
+              <button id="btnAjuste" class="btn-ghost" type="button" style="flex:1;">＋ Agregar ajuste</button>
+            </div>
+            <div id="currentAdjustments" class="adjust-list mt-2" style="display:none;"></div>
+
             <div class="mt-2">
               <div class="d-flex align-items-center justify-content-between">
                 <div class="muted" style="font-weight:800;">Total</div>
                 <div style="font-weight:900; font-size:18px;">$ <span id="currentTotal">0</span></div>
+              </div>
+
+              <div class="d-flex align-items-center justify-content-between mt-2">
+                <div class="muted" style="font-size:12px; font-weight:700;">Copias del ticket</div>
+                <div class="qtybox">
+                  <div class="qtybtn" id="copiesMinus">−</div>
+                  <div class="qtyval" id="ticketCopiesVal">1</div>
+                  <div class="qtybtn" id="copiesPlus">+</div>
+                </div>
               </div>
             </div>
           </div>
@@ -124,7 +139,7 @@
     <div class="glass">
       <div class="glass-header">
         <h5>Liquidación (hoy)</h5>
-        <span class="tag">Efectivo a rendir = Total - Transferencia</span>
+        <span class="tag">Efectivo a rendir = Total − Transferencia + Cambios</span>
       </div>
       <div class="glass-body">
         <div id="summaryTop" class="summary-top"></div>
@@ -208,6 +223,13 @@
 
                 <div class="glass-body">
                   <div id="editItems"></div>
+
+                  <div class="d-flex gap-2 mt-2">
+                    <button id="btnEnvioEdit" class="btn-ghost" type="button" style="flex:1;">🛵 Cobrar envío</button>
+                    <button id="btnAjusteEdit" class="btn-ghost" type="button" style="flex:1;">＋ Agregar ajuste</button>
+                  </div>
+                  <div id="editAdjustments" class="adjust-list mt-2" style="display:none;"></div>
+
                   <div class="mt-2">
                     <div class="d-flex align-items-center justify-content-between">
                       <div class="muted" style="font-weight:800;">Total</div>
@@ -245,6 +267,54 @@
       </div>
     </div>
   </div>
+
+  <div class="modal fade" id="confirmDeleteOrderModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content glass">
+      <div class="modal-header">
+        <h5 class="modal-title">Eliminar pedido</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p style="color:#e6eefb;font-weight:600;">
+          ¿Eliminar este pedido?
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn-danger-soft" onclick="confirmDeleteOrder()">
+          Eliminar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <!-- Modal: agregar ajuste (envío / descuento / recargo) -->
+  <div class="modal fade" id="adjustModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-magik">
+        <div class="modal-header modal-magik-header">
+          <h5 class="modal-title" id="adjustTitle" style="font-weight:900;">Agregar ajuste</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label muted mb-1">Motivo</label>
+          <input id="adjustLabel" class="form-control" placeholder="Ej: Envío, Descuento, Sin fritas..." />
+          <label class="form-label muted mb-1 mt-2">Monto ($)</label>
+          <input id="adjustAmount" class="form-control" inputmode="text" placeholder="Ej: 500  (o -200 para descontar)" />
+          <div class="muted" style="font-size:11px; margin-top:6px;">
+            Positivo <b>suma</b> al total (envío, recargo). Negativo <b>resta</b> (descuento, sin fritas). Podés agregar todos los que quieras.
+          </div>
+        </div>
+        <div class="modal-footer modal-magik-footer">
+          <button type="button" class="btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+          <button id="adjustConfirm" type="button" class="btn-magik">Agregar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 {% endblock %}
 
 {% block scripts %}
