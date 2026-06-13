@@ -617,7 +617,10 @@ const Magik = (() => {
     const extraWrap = document.getElementById("extras");
     extraWrap.innerHTML = "";
 
-    (BOOT.ingredients || []).forEach(ing => {
+    // Solo extras activos (más los que ya estén agregados, para poder quitarlos).
+    (BOOT.ingredients || [])
+      .filter(ing => ing.active !== 0 || countAdded(item, ing.id) > 0)
+      .forEach(ing => {
       const qty = countAdded(item, ing.id);
 
       const row = document.createElement("div");

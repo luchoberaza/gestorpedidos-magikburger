@@ -392,15 +392,16 @@
 
         <div class="note">Gracias ✨</div>
 
-        <div class="no-print">
-          <button class="btn" onclick="window.location.href='/'">Volver</button>
-          <button class="btn" onclick="window.print()">Imprimir</button>
-        </div>
-
       </div>
     </div>
   </div>
   {% endfor %}
+
+  <!-- Botones una sola vez (no se imprimen): no se repiten entre copias -->
+  <div class="no-print" style="margin: 12px auto; max-width:420px;">
+    <button class="btn" onclick="window.location.href='/'">Volver</button>
+    <button class="btn" onclick="window.print()">Imprimir</button>
+  </div>
 
   {% if autoprint %}
   <script>

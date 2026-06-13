@@ -7,6 +7,8 @@ __pycache__/
 # ===== Node / Electron (build) =====
 launcher/node_modules/
 launcher/dist/
+# lockfile vacío generado por herramientas en la raíz (el del launcher SÍ se versiona)
+/package-lock.json
 
 # ===== Backups y temporales =====
 *.bak
@@ -23,3 +25,4 @@ Elementos funcionales/
 Thumbs.db
 .DS_Store
 desktop.ini
+.gstack/

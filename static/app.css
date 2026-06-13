@@ -691,6 +691,13 @@ button:active{ transform: translateY(0) scale(.99); }
   background: rgba(255,255,255,.05);
 }
 
+/* Evita scroll horizontal en pantallas chicas (la barra superior envuelve).
+   Scoped a <576px: en notebook/tablet/desktop no cambia nada. */
+@media (max-width: 575px){
+  .topbar .container-fluid{ flex-wrap: wrap; row-gap: 8px; }
+  .topbar .brand{ flex-wrap: wrap; }
+}
+
 /* Tiles de promo (combos): acento violeta para distinguirlos */
 .product-tile.promo-tile{
   border-color: rgba(139,92,246,.40);

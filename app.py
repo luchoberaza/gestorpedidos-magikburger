@@ -234,7 +234,10 @@ def _insert_order_items(conn: sqlite3.Connection, cur: sqlite3.Cursor, order_id:
     centavos. Soporta promos: los ítems con promo_group toman el precio fijo de la promo
     (una sola vez por grupo, tomado de la tabla promos), ignorando el precio base de cada
     componente. Mantiene compatibilidad con columnas viejas/nuevas del schema."""
-    prod_rows = conn.execute("SELECT id, name, price_cents FROM products WHERE active=1;").fetchall()
+    # Incluimos activos E inactivos: un producto desactivado puede seguir en un pedido
+    # existente (al editar) o ser componente de una promo; no hay que descartarlo en silencio.
+    # La grilla del front ya evita agregar inactivos como producto suelto.
+    prod_rows = conn.execute("SELECT id, name, price_cents FROM products;").fetchall()
     prod_map = {int(p["id"]): p for p in prod_rows}
     ing_rows = conn.execute("SELECT id, name, extra_price_cents FROM ingredients WHERE active=1;").fetchall()
     ing_map = {int(i["id"]): i for i in ing_rows}
@@ -3223,6 +3226,11 @@ def api_create_order():
 
         total_cents = _insert_order_items(conn, cur, order_id, items)
 
+        # Si ningún producto resultó válido, no guardamos un pedido vacío.
+        if conn.execute("SELECT COUNT(*) FROM order_items WHERE order_id=?;", (order_id,)).fetchone()[0] == 0:
+            conn.rollback()
+            return jsonify({"ok": False, "error": "El pedido no tiene productos válidos."}), 400
+
         # Ajustes (envío, descuentos: pueden sumar o restar)
         total_cents += _apply_order_adjustments(conn, cur, order_id, adjustments)
 
@@ -3378,6 +3386,11 @@ def api_update_order(order_id: int):
             cur.execute("DELETE FROM order_adjustments WHERE order_id=?;", (order_id,))
 
         total_cents = _insert_order_items(conn, cur, order_id, items)
+
+        # Si ningún producto resultó válido, no guardamos un pedido vacío.
+        if conn.execute("SELECT COUNT(*) FROM order_items WHERE order_id=?;", (order_id,)).fetchone()[0] == 0:
+            conn.rollback()
+            return jsonify({"ok": False, "error": "El pedido no tiene productos válidos."}), 400
 
         # Ajustes (envío, descuentos: pueden sumar o restar)
         total_cents += _apply_order_adjustments(conn, cur, order_id, adjustments)
@@ -3779,11 +3792,22 @@ def admin_products_delete(pid: int):
 
     conn = db()
     try:
-        conn.execute("DELETE FROM products WHERE id=?;", (pid,))
+        # Si el producto está usado en pedidos o en promos, NO lo borramos (rompería el
+        # historial o dejaría promos con componentes colgados): lo dejamos INACTIVO.
+        # Si no está usado en ningún lado, lo borramos de verdad.
+        used = (
+            conn.execute("SELECT 1 FROM order_items WHERE product_id=? LIMIT 1;", (pid,)).fetchone()
+            or conn.execute("SELECT 1 FROM promo_components WHERE product_id=? LIMIT 1;", (pid,)).fetchone()
+        )
+        if used:
+            conn.execute("UPDATE products SET active=0 WHERE id=?;", (pid,))
+        else:
+            conn.execute("DELETE FROM product_base_ingredients WHERE product_id=?;", (pid,))
+            conn.execute("DELETE FROM products WHERE id=?;", (pid,))
         conn.commit()
     except sqlite3.Error:
         conn.rollback()
-        # Si no se puede borrar por historial, lo dejamos inactivo
+        # Ante cualquier problema, lo dejamos inactivo (nunca rompemos historial).
         try:
             conn.execute("UPDATE products SET active=0 WHERE id=?;", (pid,))
             conn.commit()
@@ -4032,10 +4056,25 @@ def admin_ingredients_delete(iid: int):
 
     conn = db()
     try:
-        conn.execute("DELETE FROM ingredients WHERE id=?;", (iid,))
+        # Si el ingrediente está usado (como base de un producto o en el historial de
+        # pedidos), lo dejamos INACTIVO en vez de borrarlo, para no dejar referencias
+        # colgadas. Si no está usado, lo borramos de verdad.
+        used = (
+            conn.execute("SELECT 1 FROM product_base_ingredients WHERE ingredient_id=? LIMIT 1;", (iid,)).fetchone()
+            or conn.execute("SELECT 1 FROM order_item_mods WHERE ingredient_id=? LIMIT 1;", (iid,)).fetchone()
+        )
+        if used:
+            conn.execute("UPDATE ingredients SET active=0 WHERE id=?;", (iid,))
+        else:
+            conn.execute("DELETE FROM ingredients WHERE id=?;", (iid,))
         conn.commit()
     except sqlite3.Error:
         conn.rollback()
+        try:
+            conn.execute("UPDATE ingredients SET active=0 WHERE id=?;", (iid,))
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
     finally:
         conn.close()
 
@@ -4136,6 +4175,9 @@ def admin_couriers_delete(cid: int):
 
     conn = db()
     try:
+        # Sus pedidos quedan "sin asignar" (igual que ON DELETE SET NULL, que SQLite no
+        # fuerza). Así la liquidación no queda con un courier_id colgado.
+        conn.execute("UPDATE orders SET courier_id=NULL WHERE courier_id=?;", (cid,))
         conn.execute("DELETE FROM couriers WHERE id=?;", (cid,))
         conn.commit()
     except sqlite3.Error:

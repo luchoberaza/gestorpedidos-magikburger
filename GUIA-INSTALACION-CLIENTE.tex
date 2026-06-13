@@ -1,0 +1,192 @@
+% ===================================================================
+%  Guia de instalacion - MagikBurger (actualizacion automatica)
+%  Compilar en Overleaf con: pdfLaTeX  (archivo en UTF-8)
+% ===================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-noshorthands]{babel}
+\usepackage{lmodern}
+\usepackage{textcomp}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{parskip}
+\usepackage[hidelinks]{hyperref}
+
+% ---- Estilo de los bloques de comandos ----
+\definecolor{codebg}{gray}{0.95}
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{gray!50},
+  framesep=6pt,
+  xleftmargin=6pt,
+  xrightmargin=6pt,
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  aboveskip=8pt,
+  belowskip=8pt,
+}
+
+% ---- Cajas de aviso ----
+\newtcolorbox{importante}{
+  colback=red!5!white, colframe=red!70!black,
+  title=\textbf{IMPORTANTE}, fonttitle=\bfseries,
+  boxrule=0.8pt, arc=2pt, left=6pt, right=6pt, top=4pt, bottom=4pt
+}
+\newtcolorbox{nota}{
+  colback=blue!4!white, colframe=blue!55!black,
+  title=\textbf{Nota}, fonttitle=\bfseries,
+  boxrule=0.8pt, arc=2pt, left=6pt, right=6pt, top=4pt, bottom=4pt
+}
+
+% ---- Atajos para rutas/comandos en linea ----
+\newcommand{\rut}[1]{\texttt{#1}}
+\newcommand{\bs}{\textbackslash{}}
+
+\setlist[enumerate]{itemsep=4pt, topsep=4pt}
+
+\title{\textbf{Guía paso a paso}\\[4pt]
+\large Instalar la versión nueva en el local (UNA sola vez)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.2cm}
+
+Esta guía es para dejar instalada en la computadora del local la versión con
+\textbf{actualización automática}. Después de hacer esto \textbf{una sola vez}, no hay que
+volver a instalar nunca más: los cambios futuros llegan solos al abrir la app.
+
+\begin{nota}
+Hay dos partes:
+\begin{itemize}[leftmargin=1.4em, itemsep=2pt, topsep=2pt]
+  \item \textbf{PARTE A:} en TU computadora (la de programar). Genera el instalador.
+  \item \textbf{PARTE B:} en la computadora DEL LOCAL. Instala y rescata la base de datos.
+\end{itemize}
+Hacelas en orden. Tomate tu tiempo: está todo explicado con lo que hay que escribir y dónde tocar.
+\end{nota}
+
+% ===================================================================
+\section*{PARTE A --- En tu computadora (generar el instalador)}
+
+\subsection*{A.1) Subir el código}
+El repositorio donde vive la app necesita tener el código nuevo. En general es:
+
+\begin{lstlisting}
+git add -A
+git commit -m "Features nuevas + auto-actualizacion"
+git push
+\end{lstlisting}
+
+\subsection*{A.2) Generar el instalador}
+\begin{enumerate}
+  \item Abrí la app \textbf{Símbolo del sistema}: tocá el botón \textbf{Inicio} de Windows,
+        escribí \rut{cmd} y abrí ``Símbolo del sistema''.
+  \item Escribí esto y apretá Enter (cambiá la ruta si tu proyecto está en otro lado):
+\begin{lstlisting}
+cd "C:\Users\lbera\OneDrive\Desktop\Proyectos\Proyecto Magik\launcher"
+\end{lstlisting}
+  \item La primera vez, instalá las herramientas (esperá a que termine):
+\begin{lstlisting}
+npm install
+\end{lstlisting}
+  \item Generá el instalador:
+\begin{lstlisting}
+npm run dist
+\end{lstlisting}
+  \item Cuando termine, el instalador queda en la carpeta
+        \rut{...\bs Proyecto Magik\bs launcher\bs dist\bs}.
+        Buscá un archivo que se llame algo como
+        \textbf{\rut{MagikBurger-Launcher-Setup-1.0.1.exe}}.
+  \item Copiá ese \rut{.exe} a un pendrive (o mandalo a la PC del local como prefieras).
+\end{enumerate}
+
+% ===================================================================
+\section*{PARTE B --- En la computadora del local (instalar SIN perder datos)}
+
+\begin{importante}
+Primero rescatamos la base de datos actual (donde están todos los pedidos y la
+configuración) para que no se pierda nada.
+\end{importante}
+
+\subsection*{B.1) Cerrar la app actual}
+\begin{enumerate}
+  \item Si la app de MagikBurger está abierta, \textbf{cerrala} (la X de arriba a la derecha).
+\end{enumerate}
+
+\subsection*{B.2) Encontrar y copiar la base de datos actual (el rescate)}
+\begin{enumerate}
+  \item Apretá las teclas \textbf{Windows + R} (se abre una ventanita ``Ejecutar'').
+  \item Escribí exactamente esto y apretá Enter:
+\begin{lstlisting}
+%LOCALAPPDATA%\Programs
+\end{lstlisting}
+        (Se abre el explorador de archivos. Ahí suele estar instalada la app.)
+  \item Buscá una carpeta llamada \textbf{\rut{MagikBurger Launcher}} (o parecida) y entrá.
+  \item Entrá a: \textbf{\rut{resources}} $\rightarrow$ \textbf{\rut{backend\_app}}.
+  \item Ahí adentro vas a ver un archivo llamado \textbf{\rut{magikburger.db}}.
+  \item \textbf{Copialo} (clic derecho $\rightarrow$ Copiar) y \textbf{pegalo en el Escritorio}
+        (clic derecho en el Escritorio $\rightarrow$ Pegar). Ese es el rescate: NO lo borres.
+\end{enumerate}
+
+\begin{nota}
+Si en \rut{\%LOCALAPPDATA\%\bs Programs} no aparece la carpeta, probá también en
+\rut{C:\bs Program Files\bs MagikBurger Launcher\bs resources\bs backend\_app\bs}.
+El archivo a copiar siempre es \textbf{\rut{magikburger.db}}.
+\end{nota}
+
+\subsection*{B.3) Instalar la versión nueva}
+\begin{enumerate}
+  \item Hacé doble clic en el instalador (\rut{MagikBurger-Launcher-Setup-...exe}) que trajiste.
+  \item Seguí los pasos (Siguiente / Instalar). Si Windows muestra un aviso azul de
+        ``Windows protegió tu PC'', tocá \textbf{Más información} $\rightarrow$
+        \textbf{Ejecutar de todas formas}.
+  \item Cuando termine, \textbf{abrí la app una vez} (que cargue) y después \textbf{cerrala}.
+        (Esto crea la carpeta donde va a vivir la base de ahora en más.)
+\end{enumerate}
+
+\subsection*{B.4) Poner la base rescatada en su lugar definitivo}
+\begin{enumerate}
+  \item Apretá de nuevo \textbf{Windows + R}.
+  \item Escribí exactamente esto y apretá Enter:
+\begin{lstlisting}
+%APPDATA%\MagikBurger Launcher\data
+\end{lstlisting}
+        (Se abre una carpeta llamada \textbf{\rut{data}}. Adentro va a haber un
+        \rut{magikburger.db} ``vacío'', el que creó la app recién.)
+  \item Copiá el \textbf{\rut{magikburger.db} del Escritorio} (el rescatado en el paso B.2) y
+        \textbf{pegalo dentro de esta carpeta \rut{data}}, eligiendo
+        \textbf{``Reemplazar el archivo de destino''} cuando pregunte.
+\end{enumerate}
+
+\subsection*{B.5) Abrir y verificar}
+\begin{enumerate}
+  \item Abrí la app de nuevo.
+  \item Fijate que estén \textbf{los pedidos y datos de siempre} (productos, repartidores, etc.).
+        Si está todo: ¡listo! Quedó instalada y con sus datos reales.
+\end{enumerate}
+
+% ===================================================================
+\section*{¡Y eso es todo!}
+
+A partir de ahora, cada cambio que hagas y subas se actualiza solo en el local
+\textbf{la próxima vez que abran la app}. No hay que volver a instalar nada ni tocar la base.
+
+\subsection*{Si algo sale mal}
+\begin{itemize}[leftmargin=1.4em]
+  \item La base rescatada del Escritorio sigue ahí: podés repetir el paso B.4.
+  \item En \rut{\%APPDATA\%\bs MagikBurger Launcher\bs} hay un archivo \rut{launcher.log}
+        que registra qué pasó en cada arranque (sirve para diagnosticar).
+\end{itemize}
+
+\end{document}
