@@ -207,7 +207,12 @@
          con un padding interno de seguridad.
        =========================================================== */
     @media print{
-      @page{ margin: 3mm; }
+      /* Ancho real del rollo: papel de 80mm → área imprimible ~72mm.
+         Declarar el size hace que el layout (y el 100% del ticket) tomen el
+         ancho del PAPEL y no el de una hoja A4. Sin esto, Chromium maqueta a
+         21cm y el precio (alineado a la derecha) cae fuera del área imprimible
+         y se corta. Con 72mm todo entra. */
+      @page{ size: 72mm auto; margin: 0; }
       html, body{ background:#fff !important; }
       body{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
@@ -221,8 +226,8 @@
         border:0;
         border-radius:0;
         box-shadow:none;
-        /* padding-right un poco mayor: colchón para que el precio nunca se corte */
-        padding: 0 6px 0 2px;
+        /* Colchón lateral de seguridad para que el precio nunca toque el borde. */
+        padding: 0 3mm 0 1.5mm;
         width: 100%;
       }
       .it, .it.promo{
@@ -232,11 +237,18 @@
         border-bottom: 1px dashed var(--line);
         background: transparent !important;
       }
-      .items{ gap: 4px; }
+      .items{ gap: 3px; }
       .it-top{ gap: 6px; }
-      .it-name{ font-size: 13px; }
-      .it-price{ font-size: 13px; }
-      .total{ font-size: 15px; }
+      /* La columna izquierda puede encogerse y los nombres largos cortan palabra,
+         así nunca empujan el precio fuera del papel. */
+      .it-top > div:first-child{ min-width: 0; }
+      .it-name{ font-size: 12px; overflow-wrap: anywhere; }
+      .it-qty{ font-size: 11px; }
+      .it-price{ font-size: 12px; }
+      .comp-name{ font-size: 11.5px; }
+      .mods{ font-size: 11px; }
+      .adjustments{ font-size: 12px; }
+      .total{ font-size: 14px; }
       .no-print{ display:none !important; }
 
       /* Cada copia en su propia hoja */
