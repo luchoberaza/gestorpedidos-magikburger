@@ -207,20 +207,23 @@
          con un padding interno de seguridad.
        =========================================================== */
     @media print{
-      /* Ancho real del rollo: papel de 80mm → área imprimible ~72mm.
-         Declarar el size hace que el layout (y el 100% del ticket) tomen el
-         ancho del PAPEL y no el de una hoja A4. Sin esto, Chromium maqueta a
-         21cm y el precio (alineado a la derecha) cae fuera del área imprimible
-         y se corta. Con 72mm todo entra. */
-      @page{ size: 72mm auto; margin: 0; }
+      /* Papel de 80mm → área imprimible ~72mm. Declaramos el size para acotar
+         el layout, PERO no dependemos solo de eso: el ticket se fija a un ancho
+         en mm pegado a la izquierda (ver .wrap), así aunque la impresora ignore
+         el @page y maquete en A4, el contenido igual ocupa una tira angosta a la
+         izquierda y el precio de la derecha entra en el área imprimible. */
+      @page{ size: 70mm auto; margin: 0; }
       html, body{ background:#fff !important; }
       body{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
       .wrap{
         margin:0;
         padding:0;
-        max-width: 100%;
-        width: 100%;
+        /* Ancho FIJO en mm (no 100%): es el cambio clave. Pegado a la izquierda,
+           queda dentro del área imprimible del rollo de 80mm aunque el navegador
+           crea que la hoja es A4. Si aún se corta, bajar este valor. */
+        width: 70mm;
+        max-width: 70mm;
       }
       .ticket{
         border:0;
