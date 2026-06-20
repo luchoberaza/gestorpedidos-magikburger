@@ -1012,11 +1012,14 @@ const Magik = (() => {
     const totalC = liquidation.total_cents ?? 0;
     const transferC = liquidation.transfer_cents ?? 0;
     const cashFloatC = liquidation.cash_float_total_cents ?? 0;
+    const deliveryC = liquidation.delivery_total_cents ?? 0;
     const cashToRenderC = liquidation.cash_to_render_cents ?? (totalC - transferC + cashFloatC);
 
     // Mostramos los "Cambios" (cambio por repartidor) para que el número sea coherente:
-    // Efectivo a rendir = Total − Transferencia + Cambios.
+    // Efectivo a rendir = Total − Transferencia + Cambios − Envíos.
     const cambiosTxt = cashFloatC > 0 ? ` • Cambios: $ ${money(cashFloatC)}` : "";
+    // Los envíos NO se rinden: quedan para el repartidor. Los mostramos aparte.
+    const enviosTxt = deliveryC > 0 ? ` • Envíos: $ ${money(deliveryC)}` : "";
 
     top.innerHTML = `
       <div class="summary-pill">
@@ -1026,7 +1029,7 @@ const Magik = (() => {
         </div>
         <div style="text-align:right;">
           <b>$ ${money(totalC)}</b>
-          <div class="muted" style="font-size:12px;">Transf: $ ${money(transferC)}${cambiosTxt} • Efectivo a rendir: $ ${money(cashToRenderC)}</div>
+          <div class="muted" style="font-size:12px;">Transf: $ ${money(transferC)}${cambiosTxt}${enviosTxt} • Efectivo a rendir: $ ${money(cashToRenderC)}</div>
         </div>
       </div>
     `;
@@ -1044,9 +1047,12 @@ const Magik = (() => {
       const cashC = c.cash_cents ?? tot;
       const trC = c.transfer_cents ?? 0;
       const floatC = c.cash_float_cents ?? 0;
+      const delC = c.delivery_cents ?? 0;
 
       // El "Efectivo" del repartidor ya incluye su cambio; lo aclaramos para que cierre.
       const cambioTxt = floatC > 0 ? ` • Cambio: $ ${money(floatC)}` : "";
+      // Envíos que se queda el repartidor (no se rinden).
+      const envioTxt = delC > 0 ? ` • Envíos: $ ${money(delC)}` : "";
 
       const el = document.createElement("div");
       el.className = "summary-pill";
@@ -1057,7 +1063,7 @@ const Magik = (() => {
         </div>
         <div style="text-align:right;">
           <b>$ ${money(tot)}</b>
-          <div class="muted" style="font-size:12px;">Efectivo: $ ${money(cashC)} • Transf: $ ${money(trC)}${cambioTxt}</div>
+          <div class="muted" style="font-size:12px;">Efectivo: $ ${money(cashC)} • Transf: $ ${money(trC)}${cambioTxt}${envioTxt}</div>
         </div>
       `;
       wrap.appendChild(el);
