@@ -1246,8 +1246,10 @@ def api_delete_order(order_id: int):
 # -----------------------------
 # Ticket
 # -----------------------------
-@app.get("/orders/<int:order_id>/ticket")
-def order_ticket(order_id: int):
+def _build_ticket_context(order_id: int, copies_override: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    """Arma los datos del ticket (order, blocks, adjustments, copies).
+    Se usa tanto para la vista HTML como para la impresión térmica ESC/POS,
+    así ambas salen SIEMPRE con exactamente los mismos datos."""
     conn = db()
 
     o = conn.execute(
@@ -1260,7 +1262,7 @@ def order_ticket(order_id: int):
 
     if not o:
         conn.close()
-        abort(404)
+        return None
 
     items = conn.execute(
         "SELECT * FROM order_items WHERE order_id=? ORDER BY id ASC;",
@@ -1381,12 +1383,10 @@ def order_ticket(order_id: int):
         if blk.get("kind") == "promo":
             blk["line_total_cents"] = int(blk.get("promo_price_cents", 0)) + int(blk.get("extras_cents", 0))
 
-    # Cantidad de copias a imprimir (configurable; se puede forzar por querystring).
-    try:
-        copies = int(request.args.get("copies") or 0)
-    except Exception:
-        copies = 0
-    if copies <= 0:
+    # Cantidad de copias a imprimir (configurable; se puede forzar por parámetro).
+    if copies_override is not None and copies_override > 0:
+        copies = copies_override
+    else:
         conn2 = db()
         try:
             copies = int(get_setting(conn2, "ticket_copies", "1") or "1")
@@ -1396,11 +1396,8 @@ def order_ticket(order_id: int):
             conn2.close()
     copies = max(1, min(copies, 10))
 
-    auto = (request.args.get("autoprint") in ("1", "true", "yes"))
-
-    return render_template(
-        "ticket.html",
-        order={
+    return {
+        "order": {
             "id": int(o["id"]),
             "ddmm": dt["date"],
             "hhmm": dt["time"],
@@ -1418,11 +1415,297 @@ def order_ticket(order_id: int):
             ),
             "total_cents": int(o["total_cents"] or 0),
         },
-        blocks=blocks,
-        adjustments=adjustments,
-        copies=copies,
+        "blocks": blocks,
+        "adjustments": adjustments,
+        "copies": copies,
+    }
+
+
+@app.get("/orders/<int:order_id>/ticket")
+def order_ticket(order_id: int):
+    try:
+        copies_q = int(request.args.get("copies") or 0)
+    except Exception:
+        copies_q = 0
+    ctx = _build_ticket_context(order_id, copies_override=(copies_q if copies_q > 0 else None))
+    if ctx is None:
+        abort(404)
+    auto = (request.args.get("autoprint") in ("1", "true", "yes"))
+    return render_template(
+        "ticket.html",
+        order=ctx["order"],
+        blocks=ctx["blocks"],
+        adjustments=ctx["adjustments"],
+        copies=ctx["copies"],
         autoprint=auto,
     )
+
+
+# =============================================================
+# Impresión térmica DIRECTA (ESC/POS)
+# -------------------------------------------------------------
+# En vez de rasterizar el HTML (que el driver reescala y sale "doble/fantasma"),
+# mandamos comandos ESC/POS de texto plano a la impresora. Sale nítido, igual que
+# el autotest, sin depender de ningún driver. Solo Windows (usa ctypes, que ya
+# viene con Python: no hay que instalar nada). Se despacha por OTA como el resto.
+# =============================================================
+import unicodedata as _unicodedata
+
+_TICKET_WIDTH = 48  # columnas de una impresora de 80mm en fuente A
+_ESC = b"\x1b"
+_GS = b"\x1d"
+
+
+def _ascii(s: Any) -> str:
+    """Translitera a ASCII (á→a, ñ→n, quita emojis) para que se lea bien en
+    cualquier impresora sin depender de la tabla de códigos configurada."""
+    if s is None:
+        return ""
+    s = str(s)
+    repl = {"–": "-", "—": "-", "“": '"', "”": '"', "‘": "'", "’": "'",
+            "…": "...", "•": "*", "✅": " OK", "€": "EUR"}
+    for k, v in repl.items():
+        s = s.replace(k, v)
+    s = _unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not _unicodedata.combining(c))
+    return s.encode("ascii", "ignore").decode("ascii")
+
+
+def _b(s: str) -> bytes:
+    """Texto (ya ascii) a bytes."""
+    return _ascii(s).encode("ascii", "ignore")
+
+
+def _lr(left: str, right: str, width: int = _TICKET_WIDTH) -> bytes:
+    """Línea con `left` a la izquierda y `right` pegado a la derecha."""
+    left = _ascii(left)
+    right = _ascii(right)
+    if len(left) + 1 + len(right) > width:
+        left = left[: max(0, width - len(right) - 1)]
+    pad = width - len(left) - len(right)
+    if pad < 1:
+        pad = 1
+    return (left + (" " * pad) + right).encode("ascii", "ignore") + b"\n"
+
+
+def _sep() -> bytes:
+    return (b"-" * _TICKET_WIDTH) + b"\n"
+
+
+def _escpos_mods(blk: Dict[str, Any], is_transfer: bool, indent: str = "  ") -> bytes:
+    out = bytearray()
+    removed = blk.get("removed") or []
+    added = blk.get("added") or []
+    for r in removed:
+        out += _b(f"{indent}- Sin {r}") + b"\n"
+    for a in added:
+        name = f'{indent}+ Extra {a.get("name", "")}'
+        if int(a.get("count", 1) or 1) > 1:
+            name += f' x{int(a["count"])}'
+        if not is_transfer:
+            out += _lr(name, f'$ {int(a.get("price_cents_total") or 0)//100}')
+        else:
+            out += _b(name) + b"\n"
+    if not removed and not added:
+        out += _b(f"{indent}Sin modificaciones") + b"\n"
+    return bytes(out)
+
+
+def _escpos_block(blk: Dict[str, Any], is_transfer: bool) -> bytes:
+    out = bytearray()
+    if blk.get("kind") == "promo":
+        price = "" if is_transfer else f'$ {int(blk.get("line_total_cents") or 0)//100}'
+        out += _ESC + b"E\x01"                       # negrita
+        out += _lr("PROMO: " + str(blk.get("promo_name", "")), price)
+        out += _ESC + b"E\x00"
+        for comp in blk.get("components", []):
+            cname = "* " + str(comp.get("name", ""))
+            if int(comp.get("qty", 1) or 1) > 1:
+                cname += f' x{int(comp["qty"])}'
+            out += _b(cname) + b"\n"
+            out += _escpos_mods(comp, is_transfer, indent="   ")
+    else:
+        price = "" if is_transfer else f'$ {int(blk.get("line_total_cents") or 0)//100}'
+        out += _ESC + b"E\x01"
+        out += _lr(str(blk.get("name", "")), price)
+        out += _ESC + b"E\x00"
+        out += _b(f'x{int(blk.get("qty", 1) or 1)}') + b"\n"
+        if not is_transfer:
+            out += _lr("  Base", f'$ {int(blk.get("base_price_cents") or 0)//100}')
+        out += _escpos_mods(blk, is_transfer, indent="  ")
+    out += b"\n"
+    return bytes(out)
+
+
+def _escpos_ticket_bytes(ctx: Dict[str, Any]) -> bytes:
+    order = ctx["order"]
+    blocks = ctx["blocks"]
+    adjustments = ctx["adjustments"] or []
+    copies = max(1, min(int(ctx.get("copies") or 1), 10))
+    is_transfer = (order.get("payment_method") == "transfer")
+
+    def one() -> bytes:
+        out = bytearray()
+        out += _ESC + b"@"                            # reset
+        # Encabezado centrado, grande y en negrita
+        out += _ESC + b"a\x01"                        # centrar
+        out += _GS + b"!\x11"                         # doble alto + ancho
+        out += _ESC + b"E\x01" + _b("Magik") + _ESC + b"E\x00" + b"\n"
+        out += _GS + b"!\x00"                         # tamaño normal
+        out += b"\n"
+        # Datos (a la izquierda)
+        out += _ESC + b"a\x00"
+        if order.get("address"):
+            out += _ESC + b"E\x01" + _b(str(order["address"])) + _ESC + b"E\x00" + b"\n"
+        if order.get("phone"):
+            out += _b("Tel: " + str(order["phone"])) + b"\n"
+        linea = f'{order.get("ddmm", "")} {order.get("hhmm", "")}'.strip()
+        if order.get("courier_name"):
+            linea += f' - Rep: {order["courier_name"]}'
+        out += _b(linea) + b"\n"
+        out += _b("TRANSFERENCIA" if is_transfer else "EFECTIVO") + b"\n"
+        out += _sep()
+        for blk in blocks:
+            out += _escpos_block(blk, is_transfer)
+        if adjustments and not is_transfer:
+            out += _sep()
+            for adj in adjustments:
+                amt = int(adj.get("amount_cents") or 0)
+                money = ("- " if amt < 0 else "+ ") + f"$ {abs(amt)//100}"
+                out += _lr(str(adj.get("label", "")), money)
+        # Total
+        out += _sep()
+        out += _ESC + b"E\x01" + _GS + b"!\x01"       # negrita + doble alto
+        if is_transfer:
+            out += _lr("TOTAL", "TRANSFERIDO")
+        else:
+            out += _lr("TOTAL", f'$ {int(order.get("total_cents") or 0)//100}')
+        out += _GS + b"!\x00" + _ESC + b"E\x00"
+        out += b"\n"
+        out += _ESC + b"a\x01" + _b("Gracias") + b"\n" + _ESC + b"a\x00"
+        out += b"\n\n\n\n"
+        out += _GS + b"V\x42\x00"                      # avanzar y cortar
+        return bytes(out)
+
+    data = bytearray()
+    for _ in range(copies):
+        data += one()
+    return bytes(data)
+
+
+def _win_get_default_printer() -> Optional[str]:
+    try:
+        import ctypes
+        from ctypes import wintypes
+        winspool = ctypes.WinDLL("winspool.drv")
+        fn = winspool.GetDefaultPrinterW
+        fn.argtypes = [wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+        fn.restype = wintypes.BOOL
+        n = wintypes.DWORD(0)
+        fn(None, ctypes.byref(n))
+        if n.value == 0:
+            return None
+        buf = ctypes.create_unicode_buffer(n.value)
+        if fn(buf, ctypes.byref(n)):
+            return buf.value or None
+        return None
+    except Exception:
+        return None
+
+
+def _win_send_raw(printer_name: str, data: bytes) -> None:
+    """Envía bytes crudos (ESC/POS) a la cola de impresión de Windows por nombre."""
+    import ctypes
+    from ctypes import wintypes
+    winspool = ctypes.WinDLL("winspool.drv")
+
+    class DOC_INFO_1(ctypes.Structure):
+        _fields_ = [
+            ("pDocName", wintypes.LPWSTR),
+            ("pOutputFile", wintypes.LPWSTR),
+            ("pDatatype", wintypes.LPWSTR),
+        ]
+
+    OpenPrinter = winspool.OpenPrinterW
+    OpenPrinter.argtypes = [wintypes.LPWSTR, ctypes.POINTER(wintypes.HANDLE), wintypes.LPVOID]
+    OpenPrinter.restype = wintypes.BOOL
+
+    StartDocPrinter = winspool.StartDocPrinterW
+    StartDocPrinter.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(DOC_INFO_1)]
+    StartDocPrinter.restype = wintypes.DWORD
+
+    StartPagePrinter = winspool.StartPagePrinter
+    StartPagePrinter.argtypes = [wintypes.HANDLE]
+    StartPagePrinter.restype = wintypes.BOOL
+
+    WritePrinter = winspool.WritePrinter
+    WritePrinter.argtypes = [wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    WritePrinter.restype = wintypes.BOOL
+
+    EndPagePrinter = winspool.EndPagePrinter
+    EndPagePrinter.argtypes = [wintypes.HANDLE]
+    EndPagePrinter.restype = wintypes.BOOL
+
+    EndDocPrinter = winspool.EndDocPrinter
+    EndDocPrinter.argtypes = [wintypes.HANDLE]
+    EndDocPrinter.restype = wintypes.BOOL
+
+    ClosePrinter = winspool.ClosePrinter
+    ClosePrinter.argtypes = [wintypes.HANDLE]
+    ClosePrinter.restype = wintypes.BOOL
+
+    hPrinter = wintypes.HANDLE()
+    if not OpenPrinter(printer_name, ctypes.byref(hPrinter), None):
+        raise OSError(f"No pude abrir la impresora '{printer_name}'")
+    try:
+        doc = DOC_INFO_1("Ticket Magik", None, "RAW")
+        if not StartDocPrinter(hPrinter, 1, ctypes.byref(doc)):
+            raise OSError("StartDocPrinter falló")
+        try:
+            if not StartPagePrinter(hPrinter):
+                raise OSError("StartPagePrinter falló")
+            buf = ctypes.create_string_buffer(data, len(data))
+            written = wintypes.DWORD(0)
+            if not WritePrinter(hPrinter, buf, len(data), ctypes.byref(written)):
+                raise OSError("WritePrinter falló")
+            EndPagePrinter(hPrinter)
+        finally:
+            EndDocPrinter(hPrinter)
+    finally:
+        ClosePrinter(hPrinter)
+
+
+@app.post("/orders/<int:order_id>/print_escpos")
+def order_print_escpos(order_id: int):
+    """Imprime el ticket por ESC/POS directo. Devuelve JSON. Si algo falla,
+    responde ok:false y el frontend cae al método HTML de siempre."""
+    if sys.platform != "win32":
+        return jsonify({"ok": False, "error": "solo-windows"})
+    try:
+        try:
+            copies_q = int(request.args.get("copies") or 0)
+        except Exception:
+            copies_q = 0
+        ctx = _build_ticket_context(order_id, copies_override=(copies_q if copies_q > 0 else None))
+        if ctx is None:
+            return jsonify({"ok": False, "error": "pedido-no-encontrado"}), 404
+
+        conn = db()
+        try:
+            printer = (get_setting(conn, "printer_name", "") or "").strip()
+        finally:
+            conn.close()
+        if not printer:
+            printer = _win_get_default_printer() or ""
+        if not printer:
+            return jsonify({"ok": False, "error": "sin-impresora"})
+
+        data = _escpos_ticket_bytes(ctx)
+        _win_send_raw(printer, data)
+        return jsonify({"ok": True, "printer": printer})
+    except Exception as e:
+        # Nunca 500: devolvemos el error para que el frontend caiga al método HTML.
+        return jsonify({"ok": False, "error": str(e)})
 
 
 # -----------------------------

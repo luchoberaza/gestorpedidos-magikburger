@@ -1180,12 +1180,20 @@ const Magik = (() => {
     }).catch(() => {});
   }
 
-  function printTicket(orderId, copies) {
+  async function printTicket(orderId, copies) {
     if (!orderId) return;
     copies = parseInt(copies || getTicketCopies(), 10) || 1;
     copies = Math.max(1, Math.min(copies, 10));
 
-    // Imprimimos dentro de un iframe oculto: NO abre ventana ni app nueva.
+    // 1) Impresión térmica DIRECTA (ESC/POS): sale nítida, sin depender del driver.
+    //    Si el backend no puede (no es Windows, no hay impresora, error), cae al HTML.
+    try {
+      const r = await fetch(`/orders/${orderId}/print_escpos?copies=${copies}`, { method: "POST" });
+      const j = await r.json().catch(() => ({}));
+      if (j && j.ok) return; // impreso OK, no abrimos el iframe
+    } catch (e) { /* seguimos al fallback HTML */ }
+
+    // 2) Fallback: imprimimos dentro de un iframe oculto (método anterior).
     let frame = document.getElementById("printFrame");
     if (frame) frame.remove();
     frame = document.createElement("iframe");
