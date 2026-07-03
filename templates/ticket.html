@@ -257,6 +257,35 @@
       /* Cada copia en su propia hoja */
       .ticket-copy{ page-break-after: always; }
       .ticket-copy:last-child{ page-break-after: auto; }
+
+      /* ===========================================================
+         NITIDEZ EN TÉRMICA (anti-fantasma / doble impresión)
+         La térmica imprime 1-bit: blanco o negro, sin grises. Los grises
+         y las fuentes muy gruesas (peso 900) la obligan a "puntear" (dither)
+         y eso sale como sombra corrida = el efecto doble/borroso.
+         Contramedidas (todas SOLO para impresión):
+           · TODO el texto a NEGRO PURO  → sin grises → sin dither
+           · peso máximo 700             → el 900 es lo que más emborrona
+           · fuente simple del sistema   → no dependemos de Poppins (que
+             además puede no cargar si el local está sin internet)
+           · sin fondos de color en las píldoras/etiquetas
+           · logo oculto (salía como mancha fantasma) → queda el texto "Magik"
+         =========================================================== */
+      body{
+        font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
+      }
+      .ticket, .ticket *{ color:#000 !important; }
+      .magik, .it-name, .it-qty, .it-price, .comp-name, .total,
+      .adj-row, .mod-tag, .pay, .note, .mod-row b, .meta b{
+        font-weight: 700 !important;
+      }
+      .pay, .pay.cash, .pay.transfer,
+      .mod-tag, .mod-tag.add, .mod-tag.remove{
+        background: transparent !important;
+        border: 1px solid #000 !important;
+      }
+      .brand img{ display:none !important; }   /* salía fantasma; queda el texto "Magik" */
+      .magik{ font-size: 26px; }
     }
   </style>
 </head>
