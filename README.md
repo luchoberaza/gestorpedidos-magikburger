@@ -3,7 +3,7 @@
 Gestión de una hamburguesería en un solo programa: caja (tomar pedidos e imprimir
 el ticket), seguimiento de pedidos, liquidación de repartidores y cierre de jornada,
 más el panel del negocio (ventas, gastos, pagos fijos, inventario con recetas,
-reportes y exportación a Excel/PDF), usuarios con permisos, respaldos y la
+reportes, mejores clientes y exportación a Excel/PDF), usuarios con permisos, respaldos y la
 importación de datos desde *Caja Hamburguesería*.
 
 Funciona sin internet. Corre como servidor local (Flask + SQLite) y se abre desde

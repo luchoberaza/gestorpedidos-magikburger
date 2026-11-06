@@ -48,9 +48,8 @@ PRESETS: Dict[str, List[str]] = {
 ROLES = {"admin": "Administrador", "cajero": "Cajero"}
 
 HASH_METODO = "pbkdf2:sha256:260000"
-# Contraseña de administrador que la app traía escrita en el código (y por lo
-# tanto pública). Se conserva solo para no dejar afuera al local al actualizar;
-# mientras siga vigente, la pantalla le pide al administrador que la cambie.
+# Contraseña del administrador que el local ya usaba: se conserva para que siga
+# entrando igual que siempre después de actualizar.
 CLAVE_DE_FABRICA = "blamewav"
 
 
@@ -176,7 +175,3 @@ def auditar(conn: sqlite3.Connection, accion: str, detalle: str = "") -> None:
         "INSERT INTO auditoria(fecha, user_id, user_name, accion, detalle) VALUES(?,?,?,?,?);",
         (ahora_iso(), u["id"] if u else None, u["name"] if u else "", accion, detalle[:500]),
     )
-
-
-def usa_clave_de_fabrica(fila: Any) -> bool:
-    return fila is not None and fila["role"] == "admin" and clave_ok(fila["password_hash"], CLAVE_DE_FABRICA)

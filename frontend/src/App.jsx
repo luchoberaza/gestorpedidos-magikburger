@@ -2,16 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell, BarChart3, Boxes, Bike, ChevronDown, ClipboardList, KeyRound, LayoutDashboard, LogOut, Moon, Package, Receipt,
-  Search, Settings, ShoppingBag, Sun, TrendingUp, Users, Wallet, ArrowRight, Repeat2, AlertTriangle,
+  Search, Settings, ShoppingBag, Sun, TrendingUp, Users, Wallet, ArrowRight, Repeat2, Trophy,
 } from "lucide-react";
 import { bus, get, global, iniciales, post, puede, toast } from "./lib";
-import { Btn, Desplegable, DialogosHost, Modal, Toasts, abrir, formulario, resorte } from "./ui";
+import { Btn, Desplegable, DialogosHost, Toasts, formulario, resorte } from "./ui";
 import Pos from "./vistas/Pos";
 import { Liquidacion, Pedidos } from "./vistas/Operacion";
 import { Gastos, Inicio, Reportes, Ventas } from "./vistas/Finanzas";
 import Inventario from "./vistas/Inventario";
 import { Catalogo, Repartidores, Usuarios } from "./vistas/Admin";
 import Config from "./vistas/Config";
+import Clientes from "./vistas/Clientes";
 
 export const VISTAS = [
   { id: "pos", titulo: "Nuevo pedido", corto: "Nuevo", icono: ShoppingBag, grupo: "caja", permiso: ["pos"], Comp: Pos, pos: true },
@@ -21,6 +22,7 @@ export const VISTAS = [
   { id: "ventas", titulo: "Ventas", icono: TrendingUp, grupo: "negocio", permiso: ["ventas"], Comp: Ventas, desc: "Pedidos y ventas manuales" },
   { id: "gastos", titulo: "Gastos", icono: Receipt, grupo: "negocio", permiso: ["gastos"], Comp: Gastos, desc: "Gastos y pagos fijos" },
   { id: "reportes", titulo: "Reportes", icono: BarChart3, grupo: "negocio", permiso: ["reportes"], Comp: Reportes, desc: "Ganancias y exportación" },
+  { id: "clientes", titulo: "Mejores clientes", icono: Trophy, grupo: "negocio", permiso: ["reportes"], Comp: Clientes, desc: "Quién más pide, mes a mes" },
   { id: "inventario", titulo: "Inventario", icono: Boxes, grupo: "negocio", permiso: ["inventario"], Comp: Inventario, desc: "Stock, movimientos y recetas" },
   { id: "catalogo", titulo: "Productos y promos", icono: Package, grupo: "admin", permiso: ["catalogo"], Comp: Catalogo, desc: "Precios, promos y extras" },
   { id: "repartidores", titulo: "Repartidores", icono: Bike, grupo: "admin", permiso: ["repartidores"], Comp: Repartidores, desc: "Quién reparte y su cambio" },
@@ -140,18 +142,6 @@ function Shell({ sesion, setSesion, onSalir }) {
     return () => window.removeEventListener("keydown", k);
   }, []);
 
-  useEffect(() => {
-    if (sesion.clave_insegura) {
-      const t = setTimeout(() => abrir(({ cerrar, arriba }) => (
-        <Modal titulo="Cambiá la contraseña del administrador" tam="ch" onClose={() => cerrar()} arriba={arriba}
-          pie={<><Btn v="fant" onClick={() => cerrar()}>Más tarde</Btn><Btn v="prim" onClick={() => { cerrar(); cambiarClave(sesion, setSesion); }}>Cambiarla ahora</Btn></>}>
-          <div className="aviso a"><AlertTriangle /><div>Este usuario sigue con la contraseña de fábrica, que no es segura. Cambiala: la nueva la vas a saber solo vos.</div></div>
-        </Modal>)), 500);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   const u = sesion.usuario;
   const caja = visibles.filter((v) => v.grupo === "caja");
   const grupos = Object.keys(GRUPOS).map((g) => [g, visibles.filter((v) => v.grupo === g)]).filter(([, l]) => l.length);
@@ -203,7 +193,7 @@ function Shell({ sesion, setSesion, onSalir }) {
             <Desplegable abierto={menu === "usuario"} onClose={() => setMenu(null)} ancho={250}>
               <div className="menu-t">{u.username}</div>
               <button className="menu-i" onClick={() => { setMenu(null); onSalir(""); }}><Repeat2 /><div>Cambiar de usuario</div></button>
-              {u.tiene_clave && <button className="menu-i" onClick={() => { setMenu(null); cambiarClave(sesion, setSesion); }}><KeyRound /><div>Cambiar mi contraseña</div></button>}
+              {u.tiene_clave && <button className="menu-i" onClick={() => { setMenu(null); cambiarClave(); }}><KeyRound /><div>Cambiar mi contraseña</div></button>}
               <button className="menu-i" onClick={() => { cambiarTema(); setMenu(null); }}>{tema === "claro" ? <Moon /> : <Sun />}<div>Tema {tema === "claro" ? "oscuro" : "claro"}</div></button>
               <div className="menu-sep" />
               <button className="menu-i" onClick={() => { setMenu(null); onSalir(""); }}><LogOut /><div>Cerrar sesión</div></button>
@@ -233,13 +223,13 @@ function NavBtn({ on, icono: I, chev, children, onClick }) {
   );
 }
 
-async function cambiarClave(sesion, setSesion) {
+async function cambiarClave() {
   const ok = await formulario({
     titulo: "Cambiar mi contraseña", tam: "ch",
     campos: [{ id: "actual", label: "Contraseña actual", tipo: "clave", full: true, requerido: true }, { id: "nueva", label: "Contraseña nueva", tipo: "clave", full: true, requerido: true }],
     guardar: async (d) => { await post("/api/mi-clave", d); },
   });
-  if (ok) { toast("Contraseña cambiada", "", "ok"); setSesion({ ...global.sesion, clave_insegura: false }); }
+  if (ok) toast("Contraseña cambiada", "", "ok");
 }
 
 /* ---------------- Paleta de comandos (Ctrl+K) ---------------- */

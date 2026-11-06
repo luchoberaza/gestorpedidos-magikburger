@@ -413,6 +413,33 @@ table.tabla { width: 100%; border-collapse: separate; border-spacing: 0; font-si
 .logo-prev { width: 80px; height: 80px; border-radius: 20px; object-fit: cover; background: #000; border: 1px solid var(--stroke-2); }
 .permisos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
 
+/* ---------- Mejores clientes ---------- */
+.mc-lista { display: flex; flex-direction: column; gap: 10px; }
+.mc-fila { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--stroke); background: var(--glass); }
+.mc-fila.primero { background: var(--grad-soft); border-color: rgba(167, 139, 250, .35); }
+.mc-puesto { flex: none; width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; font-weight: 800; font-size: 16px; background: var(--glass-2); color: var(--txt-2); }
+.mc-puesto svg { width: 20px; height: 20px; }
+.mc-puesto.p1 { background: var(--grad); color: #fff; box-shadow: 0 6px 18px rgba(217, 70, 239, .35); }
+.mc-puesto.p2 { background: var(--violet-soft); color: var(--violet-2); }
+.mc-puesto.p3 { background: rgba(236, 72, 153, .14); color: var(--pink-2); }
+.mc-dir { display: flex; align-items: center; gap: 7px; min-width: 0; font-weight: 700; font-size: 15px; }
+.mc-dir svg { flex: none; width: 15px; height: 15px; color: var(--txt-3); }
+.mc-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; color: var(--txt-3); font-size: 12.5px; }
+.mc-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.mc-meta svg { flex: none; width: 13px; height: 13px; }
+.mc-meta b { color: var(--txt-2); font-weight: 700; }
+.mc-barra { height: 6px; border-radius: 99px; background: var(--glass-2); overflow: hidden; margin-top: 9px; }
+.mc-barra i { display: block; height: 100%; border-radius: 99px; background: var(--grad); }
+.mc-num { flex: none; display: flex; gap: 18px; text-align: right; }
+.mc-num > div { display: flex; flex-direction: column; min-width: 80px; }
+.mc-num b { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mc-num small { color: var(--txt-3); font-size: 11.5px; }
+@media (max-width: 900px) {
+  .mc-fila { flex-wrap: wrap; align-items: flex-start; }
+  .mc-fila > .crece { flex-basis: calc(100% - 54px); }
+  .mc-num { width: 100%; justify-content: flex-end; }
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1320px) {
   .nav-btn { padding: 0 12px; }

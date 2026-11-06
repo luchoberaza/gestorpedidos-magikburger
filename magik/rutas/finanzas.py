@@ -10,6 +10,7 @@ from flask import Blueprint, request, send_file
 from .. import auth, config
 from ..db import ahora_iso, get_db
 from ..documentos import hojas_reporte, pdf_reporte, xlsx
+from ..dominio import clientes
 from ..dominio import finanzas as fin
 from ..dominio import liquidacion as liq
 from ..dominio import stock
@@ -368,6 +369,53 @@ def api_reportes():
         ganancias[k] = fin.resumen(conn, rg["desde"], rg["hasta"], detalle=False)["balance_cents"]
     return ok(resumen=fin.resumen(conn, desde, hasta), ganancias=ganancias,
               meses=fin.comparacion_meses(conn, hoy, 6))
+
+
+# ---------------------------------------------------------------------------
+# Mejores clientes
+# ---------------------------------------------------------------------------
+def _mejores_args() -> Any:
+    opciones = clientes.periodos(_hoy())
+    pid = str(request.args.get("periodo") or opciones[0]["id"])
+    elegido = next((o for o in opciones if o["id"] == pid), None)
+    orden = request.args.get("orden") or "pedidos"
+    return opciones, elegido, (orden if orden in clientes.ORDENES else "pedidos")
+
+
+@bp.get("/api/clientes/mejores")
+@auth.requiere("reportes")
+def api_mejores_clientes():
+    opciones, elegido, orden = _mejores_args()
+    if elegido is None:
+        return error(f"Elegí uno de los últimos {clientes.MESES_HACIA_ATRAS} meses.")
+    cantidad = max(1, min(int(numero(request.args, "cantidad", 5)), 50))
+    datos = clientes.mejores(get_db(), elegido["desde"], elegido["hasta"], cantidad, orden)
+    return ok(periodos=opciones, periodo=elegido, orden=orden, **datos)
+
+
+@bp.get("/api/clientes/mejores.xlsx")
+@auth.requiere("reportes")
+def api_mejores_clientes_xlsx():
+    """Todos los clientes del período, en el mismo orden que la pantalla."""
+    _, elegido, orden = _mejores_args()
+    if elegido is None:
+        return error(f"Elegí uno de los últimos {clientes.MESES_HACIA_ATRAS} meses.")
+    conn = get_db()
+    datos = clientes.mejores(conn, elegido["desde"], elegido["hasta"], 0, orden)
+    hoja = {
+        "nombre": "Clientes",
+        "columnas": [("Puesto", "numero"), ("Dirección", "texto"), ("Teléfono", "texto"), ("Pedidos", "numero"),
+                     ("Comprado (sin envío)", "moneda"), ("Ticket promedio", "moneda"), ("Lo que más pide", "texto"),
+                     ("Primer pedido", "texto"), ("Último pedido", "texto")],
+        "filas": [[c["puesto"], c["direccion"], " / ".join(c["telefonos"]), c["pedidos"], c["total_cents"],
+                   c["ticket_promedio_cents"], (c["favorito"] or {}).get("nombre", ""),
+                   str(c["primero"])[:10], str(c["ultimo"])[:10]] for c in datos["clientes"]],
+        "total": ["", "TOTAL", "", datos["pedidos_total"], datos["ventas_total_cents"], "", "", "", ""],
+    }
+    contenido = xlsx([hoja], config.obtener(conn, "moneda_simbolo"))
+    return send_file(io.BytesIO(contenido), as_attachment=True,
+                     download_name=f"mejores_clientes_{elegido['id']}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 def _tipo() -> str:

@@ -105,10 +105,14 @@ class TestMigracion(Base):
         self.admin()
         ses = self.c.get("/api/sesion").get_json()
         self.assertEqual(ses["usuario"]["role"], "admin")
-        self.assertTrue(ses["clave_insegura"])
+        # No se le pide cambiar la contraseña (pedido del responsable, 6-nov).
+        self.assertNotIn("clave_insegura", ses)
+        # Si quiere cambiarla, puede hacerlo desde su menú.
         r = self.c.post("/api/mi-clave", json={"actual": "blamewav", "nueva": "otra-clave"})
         self.assertEqual(r.status_code, 200)
-        self.assertFalse(self.c.get("/api/sesion").get_json()["clave_insegura"])
+        self.c.post("/api/logout")
+        self.assertEqual(self.c.post("/api/login", json={"username": "admin", "password": "blamewav"}).status_code, 401)
+        self.assertEqual(self.c.post("/api/login", json={"username": "admin", "password": "otra-clave"}).status_code, 200)
 
     def test_migrar_dos_veces_no_rompe(self):
         create_app()
@@ -322,6 +326,123 @@ class TestPedidos(Base):
         self.pedido_api(phone="099 123 456", address="Rivera 2233")
         r = self.c.get("/api/clientes?tel=099123456").get_json()
         self.assertEqual(r["direcciones"], ["Rivera 2233"])
+
+
+# ===========================================================================
+class TestMejoresClientes(Base):
+    """Pedido del responsable (6-nov): "una analítica del cliente que más pide en el mes […]
+    lo que los verifica son las direcciones […] 6 meses para atrás […] los 5 que más compraron"."""
+
+    def setUp(self):
+        super().setUp()
+        self.catalogo()
+        self.admin()
+        self.periodos = self.c.get("/api/clientes/mejores").get_json()["periodos"]
+
+    def _fecha(self, meses_atras):
+        if meses_atras < len(self.periodos) - 1:
+            return self.periodos[meses_atras]["desde"][:8] + "15T13:00:00"
+        # Un mes más viejo que el último que se puede elegir.
+        d = datetime.fromisoformat(self.periodos[-2]["desde"]) - timedelta(days=1)
+        return d.strftime("%Y-%m-15T13:00:00")
+
+    def _pedido(self, direccion, productos, meses_atras=0, envio=0, tel="099 111 222"):
+        ajustes = [{"label": "Envío", "amount_cents": envio, "kind": "delivery"}] if envio else []
+        r = self.pedido_api(address=direccion, phone=tel, adjustments=ajustes,
+                            items=[{"product_id": p, "qty": 1} for p in productos])
+        self.assertEqual(r.status_code, 200, r.get_json())
+        conn = self.db()
+        conn.execute("UPDATE orders SET created_at=? WHERE id=?;", (self._fecha(meses_atras), r.get_json()["id"]))
+        conn.commit()
+        conn.close()
+
+    def _ver(self, **args):
+        r = self.c.get("/api/clientes/mejores?" + "&".join(f"{k}={v}" for k, v in args.items()))
+        self.assertEqual(r.status_code, 200, r.get_json())
+        return r.get_json()
+
+    def _cargar(self):
+        # Mes actual: la misma dirección escrita de tres formas es un solo cliente.
+        self._pedido("Brasil 1234", [self.p1], envio=10000)
+        self._pedido("BRASIL  1234.", [self.p1], tel="098 765 432")
+        self._pedido("brasil 1234", [self.p1])
+        self._pedido("Rivera 500", [self.p2, self.p2])
+        self._pedido("Rivera 500", [self.p2, self.p2])
+        self._pedido("Colonia 800", [self.p1])
+        self._pedido("Brasil 1234 apto 2", [self.p1])  # otro cliente: otro apartamento
+        # Mes anterior y uno fuera de los meses que se pueden elegir.
+        for _ in range(4):
+            self._pedido("Colonia 800", [self.p1], meses_atras=1)
+        self._pedido("Lejana 1", [self.p2] * 5, meses_atras=99)
+
+    def test_el_mes_actual_agrupa_por_direccion_y_no_cuenta_el_envio(self):
+        self._cargar()
+        r = self._ver()
+        self.assertEqual(r["periodo"]["id"], self.periodos[0]["id"])
+        self.assertEqual(r["clientes_distintos"], 4)
+        primero, segundo = r["clientes"][0], r["clientes"][1]
+        self.assertEqual(primero["direccion"], "brasil 1234")  # cómo se escribió la última vez
+        self.assertEqual(primero["pedidos"], 3)
+        self.assertEqual(primero["total_cents"], 3 * 30000)  # el envío es del repartidor
+        self.assertEqual(sorted(primero["telefonos"]), ["098 765 432", "099 111 222"])
+        self.assertEqual(primero["favorito"], {"nombre": "Clásica", "unidades": 3})
+        self.assertEqual(segundo["direccion"], "Rivera 500")
+        self.assertEqual(segundo["pedidos"], 2)
+        self.assertEqual(segundo["ticket_promedio_cents"], 90000)
+        self.assertEqual(segundo["favorito"], {"nombre": "Doble", "unidades": 4})
+        self.assertNotIn("Lejana 1", [c["direccion"] for c in r["clientes"]])
+
+    def test_muestra_la_direccion_como_se_escribe_mas_seguido(self):
+        self._pedido("Rivera 500", [self.p1])
+        self._pedido("Rivera 500", [self.p2])
+        self._pedido("Rivera  500", [self.p1])
+        self._pedido("RIVERA 500", [self.p1])  # la última vez, en mayúsculas
+        c = self._ver()["clientes"][0]
+        self.assertEqual((c["direccion"], c["pedidos"]), ("Rivera 500", 4))
+        self.assertEqual(c["ticket_promedio_cents"], 33800)  # $ 1.350 / 4 = $ 337,50 → $ 338
+
+    def test_se_puede_ordenar_por_lo_que_gastaron(self):
+        self._cargar()
+        r = self._ver(orden="plata")
+        self.assertEqual([c["direccion"] for c in r["clientes"][:2]], ["Rivera 500", "brasil 1234"])
+
+    def test_meses_anteriores_y_los_seis_meses_juntos(self):
+        self._cargar()
+        self.assertEqual(len(self.periodos), 7)  # el mes actual, los 5 anteriores y "los 6 juntos"
+        anterior = self._ver(periodo=self.periodos[1]["id"])
+        self.assertEqual(anterior["clientes"][0]["direccion"], "Colonia 800")
+        self.assertEqual(anterior["clientes"][0]["pedidos"], 4)
+        juntos = self._ver(periodo="todos")
+        self.assertEqual([(c["direccion"], c["pedidos"]) for c in juntos["clientes"][:2]],
+                         [("Colonia 800", 5), ("brasil 1234", 3)])
+        self.assertNotIn("Lejana 1", [c["direccion"] for c in juntos["clientes"]])
+
+    def test_muestra_los_cinco_primeros_y_exporta_todos(self):
+        for i in range(7):
+            for _ in range(i + 1):
+                self._pedido(f"Calle {i}", [self.p1])
+        r = self._ver()
+        self.assertEqual([c["puesto"] for c in r["clientes"]], [1, 2, 3, 4, 5])
+        self.assertEqual(r["clientes"][0]["direccion"], "Calle 6")
+        x = self.c.get("/api/clientes/mejores.xlsx")
+        self.assertEqual(x.status_code, 200)
+        with zipfile.ZipFile(io.BytesIO(x.data)) as z:
+            hoja = z.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        minidom.parseString(hoja)
+        for i in range(7):
+            self.assertIn(f"Calle {i}", hoja)
+
+    def test_periodo_invalido_y_sin_permiso(self):
+        self.assertEqual(self.c.get("/api/clientes/mejores?periodo=2001-01").status_code, 400)
+        caja = self.app.test_client()  # entra como Caja, que no tiene Reportes
+        self.assertEqual(caja.get("/api/clientes/mejores").status_code, 403)
+        self.assertEqual(caja.get("/api/clientes/mejores.xlsx").status_code, 403)
+
+    def test_direcciones_iguales_sin_importar_tildes_ni_puntos(self):
+        from magik.dominio.clientes import clave_direccion
+        self.assertEqual(clave_direccion("Av. San Martín  N° 55"), clave_direccion("av san martin n 55"))
+        self.assertNotEqual(clave_direccion("Brasil 1234"), clave_direccion("Brasil 1234 apto 2"))
+        self.assertEqual(clave_direccion("   "), "")
 
 
 # ===========================================================================

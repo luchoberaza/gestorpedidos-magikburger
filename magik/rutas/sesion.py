@@ -16,12 +16,8 @@ def _datos_sesion() -> dict:
     cfg = config.todas(conn)
     libre = auth.usuario_libre(conn)
     u = auth.usuario_actual()
-    insegura = False
-    if u and u["role"] == "admin":
-        insegura = auth.usa_clave_de_fabrica(conn.execute("SELECT * FROM users WHERE id=?;", (u["id"],)).fetchone())
     return {
         "usuario": u,
-        "clave_insegura": insegura,
         "hoy": jornada_actual(conn),
         "negocio": {"nombre": cfg["negocio_nombre"], "simbolo": cfg["moneda_simbolo"], "tema": cfg["tema"]},
         "acceso_libre": ({"id": int(libre["id"]), "name": libre["name"] or libre["username"]} if libre else None),
