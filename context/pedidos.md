@@ -5,11 +5,12 @@ Estados: `nuevo` → `en curso` → `hecho-local` → `verificado` · `parcial (
 
 | ID | Fecha | Fuente | Pedido (cita) | Dónde | Clase | Rama | Estado | Evidencia |
 |---|---|---|---|---|---|---|---|---|
-| P-001 | 2026-11-06 | Responsable (sesión) | "le quiero mezclar este software […] que sea solo un software" — fusionar las funciones de *Caja Hamburguesería* (panel financiero) dentro de Magik | toda la app | 🟢 | main | hecho-local | ver cierre de sesión |
-| P-002 | 2026-11-06 | Responsable (sesión) | "esta muy hardcodeada […] que no haya hardcode" | backend + UI | 🟢 | main | hecho-local | ver cierre de sesión |
-| P-003 | 2026-11-06 | Responsable (sesión) | "mejora la interfaz visual" | UI completa | 🟢 | main | hecho-local | ver cierre de sesión |
-| P-004 | 2026-11-06 | Responsable (sesión) | "levantada mal […] que funcione perfecto" — arquitectura, historial, migraciones, pruebas | backend | 🟢 | main | hecho-local | ver cierre de sesión |
-| P-005 | 2026-11-06 | repo | Trabajo de liquidación del 9-ago que había quedado sin commitear (kind del envío, pendientes, arrastrados, verificación de total) | liquidación | 🟢 | main | hecho-local | `tests/test_liquidacion.py` |
+| P-001 | 2026-11-06 | Responsable (sesión) | "le quiero mezclar este software […] que sea solo un software" — fusionar las funciones de *Caja Hamburguesería* (panel financiero) dentro de Magik | toda la app | 🟢 | main | esperando deploy | tests 29/29 · `main@7d0d8d1` · release OTA `b1793961123` · humo local en copia de la instalación |
+| P-002 | 2026-11-06 | Responsable (sesión) | "esta muy hardcodeada […] que no haya hardcode" | backend + UI | 🟢 | main | esperando deploy | tests 29/29 · `main@7d0d8d1` · release OTA `b1793961123` · humo local en copia de la instalación |
+| P-003 | 2026-11-06 | Responsable (sesión) | "mejora la interfaz visual" | UI completa | 🟢 | main | esperando deploy | tests 29/29 · `main@7d0d8d1` · release OTA `b1793961123` · humo local en copia de la instalación |
+| P-004 | 2026-11-06 | Responsable (sesión) | "levantada mal […] que funcione perfecto" — arquitectura, historial, migraciones, pruebas | backend | 🟢 | main | esperando deploy | tests 29/29 · `main@7d0d8d1` · release OTA `b1793961123` · humo local en copia de la instalación |
+| P-005 | 2026-11-06 | repo | Trabajo de liquidación del 9-ago que había quedado sin commitear (kind del envío, pendientes, arrastrados, verificación de total) | liquidación | 🟢 | main | esperando deploy | `tests/test_magik.py` (liquidación y 800 jornadas al azar) · `main@7d0d8d1` |
+| P-006 | 2026-11-06 | Responsable (sesión) | "un re diseño del gestor original […] agarres ese estilo de diseño y lo remodeles dejandolo mas lindo usando elementos de react" | UI completa | 🟢 | main | esperando deploy | React + framer-motion en `frontend/` → `static/dist` · recorrido Playwright de todas las pantallas · `main@7d0d8d1` |
 
 ## Detalle de P-001 (qué se trae de Caja Hamburguesería)
 
@@ -27,3 +28,5 @@ Estados: `nuevo` → `en curso` → `hecho-local` → `verificado` · `parcial (
 | Configuración (nombre del negocio, umbral de gasto) | **Configuración** |
 | Búsqueda global, tema claro/oscuro, notificaciones | Barra superior |
 | Sus datos | **Configuración → Importar desde Caja Hamburguesería** |
+
+> «Esperando deploy»: la versión ya está publicada; se aplica sola en la PC del local la próxima vez que abran la app. Pasa a `verificado` con el humo en el local.
