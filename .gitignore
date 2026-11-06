@@ -26,3 +26,11 @@ Thumbs.db
 .DS_Store
 desktop.ini
 .gstack/
+
+# Capturas de pruebas de interfaz
+.playwright-mcp/
+*.db-wal
+*.db-shm
+
+# Interfaz (React): las dependencias se instalan con npm; lo compilado (static/dist) SÍ se versiona
+frontend/node_modules/

@@ -1,7 +1,7 @@
 name: Publicar actualización (backend OTA)
 
-# Al pushear cambios del backend a main, empaqueta app.py + templates + static
-# en un único backend.json y publica una "release" en ESTE mismo repo (público).
+# Al pushear cambios del backend a main, empaqueta app.py + el paquete magik/ +
+# templates + JS/CSS (todo texto) en un único backend.json y publica una "release" en ESTE mismo repo (público).
 # El launcher del cliente la baja al abrir y se actualiza solo (sin reinstalar).
 
 on:
@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "app.py"
+      - "magik/**"
       - "templates/**"
       - "static/**"
   workflow_dispatch:
@@ -40,7 +41,13 @@ jobs:
           python3 - <<'PY'
           import json, glob, os
           files = {}
-          paths = ["app.py", "static/app.js", "static/app.css"] + sorted(glob.glob("templates/*.html"))
+          # Solo archivos de TEXTO: el launcher los escribe como UTF-8. Los binarios
+          # (logo, fuentes) ya vienen en el instalador.
+          paths = (["app.py"]
+                   + sorted(glob.glob("magik/**/*.py", recursive=True))
+                   + sorted(glob.glob("templates/**/*.html", recursive=True))
+                   + sorted(glob.glob("static/**/*.js", recursive=True))
+                   + sorted(glob.glob("static/**/*.css", recursive=True)))
           for p in paths:
               if os.path.exists(p):
                   with open(p, encoding="utf-8") as f:

@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ticket • Magik</title>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+  <title>Ticket #{{ order.id }} • {{ negocio.nombre }}</title>
+  <style>
+    @font-face { font-family: "Poppins"; font-weight: 400; src: url("/static/Poppins-Regular.ttf"); }
+    @font-face { font-family: "Poppins"; font-weight: 700; src: url("/static/Poppins-Bold.ttf"); }
+  </style>
 
   <style>
     :root{
@@ -297,22 +297,19 @@
       <div class="ticket">
 
         <div class="brand">
-          <img src="{{ url_for('static', filename='logo.png') }}" alt="Magik logo"
-               onerror="this.style.display='none'">
-          <div class="magik">Magik</div>
+          {% if negocio.logo %}<img src="/marca/logo" alt="" onerror="this.style.display='none'">{% endif %}
+          {% if negocio.encabezado %}<div class="magik">{{ negocio.encabezado }}</div>{% endif %}
         </div>
+        {% if negocio.mostrar_telefono and negocio.telefono %}<div style="text-align:center;font-size:12px">{{ negocio.telefono }}</div>{% endif %}
 
         <div class="meta">
           <div><b>{{ order.address }}</b></div>
           <div>Tel: <b>{{ order.phone }}</b></div>
-          <div>{{ order.ddmm }} • {{ order.hhmm }}{% if order.courier_name %} • Rep: <b>{{ order.courier_name }}</b>{% endif %}</div>
+          <div>#{{ order.id }} • {{ order.ddmm }} • {{ order.hhmm }}{% if order.courier_name %} • Rep: <b>{{ order.courier_name }}</b>{% endif %}</div>
+          {% if order.notes %}<div>Nota: <b>{{ order.notes }}</b></div>{% endif %}
         </div>
 
-        {% if order.payment_method == 'transfer' %}
-          <div class="pay transfer">📝 Transferencia</div>
-        {% else %}
-          <div class="pay cash">💵 Efectivo</div>
-        {% endif %}
+        <div class="pay {{ 'transfer' if order.ocultar_precios else 'cash' }}">{{ order.medio }}</div>
 
         <hr>
 
@@ -326,7 +323,7 @@
                     <div class="it-qty">Promo</div>
                   </div>
                   {% if order.payment_method != 'transfer' %}
-                    <div class="it-price">$ {{ (blk.line_total_cents // 100) }}</div>
+                    <div class="it-price">{{ negocio.simbolo }} {{ (blk.line_total_cents // 100) }}</div>
                   {% endif %}
                 </div>
 
@@ -347,7 +344,7 @@
                         <div class="mod-tag add">Extra</div>
                         <div style="flex:1;"><b>{{ a.name }}</b> {% if a.count > 1 %}x{{ a.count }}{% endif %}</div>
                         {% if order.payment_method != 'transfer' %}
-                          <div><b>$ {{ (a.price_cents_total // 100) }}</b></div>
+                          <div><b>{{ negocio.simbolo }} {{ (a.price_cents_total // 100) }}</b></div>
                         {% endif %}
                       </div>
                     {% endfor %}
@@ -367,7 +364,7 @@
                   </div>
 
                   {% if order.payment_method != 'transfer' %}
-                    <div class="it-price">$ {{ (blk.line_total_cents // 100) }}</div>
+                    <div class="it-price">{{ negocio.simbolo }} {{ (blk.line_total_cents // 100) }}</div>
                   {% endif %}
                 </div>
 
@@ -375,7 +372,7 @@
                   {% if order.payment_method != 'transfer' %}
                     <div class="mod-row">
                       <div>Base</div>
-                      <div><b>$ {{ (blk.base_price_cents // 100) }}</b></div>
+                      <div><b>{{ negocio.simbolo }} {{ (blk.base_price_cents // 100) }}</b></div>
                     </div>
                   {% endif %}
 
@@ -395,7 +392,7 @@
                         <div class="mod-tag add">Extra</div>
                         <div style="flex:1;"><b>{{ a.name }}</b> {% if a.count > 1 %}x{{ a.count }}{% endif %}</div>
                         {% if order.payment_method != 'transfer' %}
-                          <div><b>$ {{ (a.price_cents_total // 100) }}</b></div>
+                          <div><b>{{ negocio.simbolo }} {{ (a.price_cents_total // 100) }}</b></div>
                         {% endif %}
                       </div>
                     {% endfor %}
@@ -416,9 +413,9 @@
               <div class="adj-row">
                 <div>{{ adj.label }}</div>
                 {% if adj.amount_cents < 0 %}
-                  <div class="amt neg">− $ {{ ((adj.amount_cents * -1) // 100) }}</div>
+                  <div class="amt neg">− {{ negocio.simbolo }} {{ ((adj.amount_cents * -1) // 100) }}</div>
                 {% else %}
-                  <div class="amt pos">+ $ {{ (adj.amount_cents // 100) }}</div>
+                  <div class="amt pos">+ {{ negocio.simbolo }} {{ (adj.amount_cents // 100) }}</div>
                 {% endif %}
               </div>
             {% endfor %}
@@ -428,13 +425,13 @@
         <div class="total">
           <span>Total</span>
           {% if order.payment_method == 'transfer' %}
-            <span>TRANSFERIDO ✅</span>
+            <span>{{ order.texto_pagado }}</span>
           {% else %}
-            <span>$ {{ (order.total_cents // 100) }}</span>
+            <span>{{ negocio.simbolo }} {{ (order.total_cents // 100) }}</span>
           {% endif %}
         </div>
 
-        <div class="note">Gracias ✨</div>
+        {% if negocio.pie %}<div class="note">{{ negocio.pie }}</div>{% endif %}
 
       </div>
     </div>

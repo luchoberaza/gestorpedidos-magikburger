@@ -5,10 +5,11 @@ actualización **solo al abrir la app**, sin reinstalar nada y **sin tocar su ba
 
 ## Cómo funciona (resumen)
 
-1. Pusheás cambios de `app.py`, `templates/` o `static/` a `main` del repo público
-   `gestorpedidos-magikburger` (el repo de la app).
+1. Pusheás cambios de `app.py`, `magik/`, `templates/` o `static/` a `main` del repo
+   público `gestorpedidos-magikburger` (el repo de la app).
 2. Una **GitHub Action** (`.github/workflows/publish-update.yml`) empaqueta esos archivos
-   en un único `backend.json` y publica una **release** en ese mismo repo con un tag
+   de texto (`app.py`, `magik/**/*.py`, `templates/**/*.html`, `static/**/*.js` y
+   `static/**/*.css`) en un único `backend.json` y publica una **release** en ese mismo repo con un tag
    `b<build>` (build = epoch, siempre creciente). Usa el token que ya trae GitHub
    Actions, así que **no hay que crear ningún token**.
 3. El **launcher** del cliente, al abrir, consulta la última release pública. Si hay un
@@ -18,7 +19,11 @@ actualización **solo al abrir la app**, sin reinstalar nada y **sin tocar su ba
 4. La **base de datos** vive aparte, en una carpeta persistente del usuario, así que
    **ninguna actualización la pisa jamás**.
 
-> Cubre el ~95% de los cambios (backend Python + UI web). Si algún día cambia el propio
+> Cubre el ~95% de los cambios (backend Python + UI web). La interfaz está hecha en
+> React (`frontend/`) y se compila a `static/dist/`: si la cambiás, corré
+> `cd frontend && npm install && npm run build` y commiteá `static/dist/` junto con el
+> código. Los binarios (logo de fábrica, fuentes) no viajan por OTA: ya vienen en el
+> instalador. El logo propio del local se sube desde Configuración. Si algún día cambia el propio
 > launcher de Electron (`launcher/main.js`), eso sí necesita un reempaquetado e instalación
 > puntual (es raro).
 
@@ -80,10 +85,9 @@ De acá en adelante, **la base nunca más se toca** por las actualizaciones.
 
 ## Día a día
 
-Solo:
-
 ```bash
-git add -A
+python -m unittest discover -s tests   # que todo dé OK
+git add <lo que cambiaste>
 git commit -m "lo que cambiaste"
 git push
 ```
@@ -95,8 +99,11 @@ No hay que reinstalar ni tocar nada en su PC.
 
 - Las actualizaciones se aplican **al iniciar** la app (necesita internet en ese momento;
   si no hay, abre con la versión que ya tenía y actualiza la próxima vez).
-- El esquema de la base se migra solo (`ensure_schema()` en `app.py`), así que agregar
-  columnas/tablas nuevas no rompe la base existente del cliente.
+- El esquema de la base se migra solo (migraciones versionadas en `magik/db.py`, con
+  `PRAGMA user_version`). Antes de migrar una base con datos se guarda una copia en
+  `%APPDATA%\MagikBurger Launcher\data\respaldos\pre-migracion-…db`.
+- Además hay respaldos automáticos (al abrir, una vez por día, y en cada cierre) en esa
+  misma carpeta `respaldos`, y los PDF de los cierres en `reportes`.
 - Cambios en `launcher/main.js` (el shell de Electron) **no** viajan por OTA: requieren
   reempaquetar e instalar de nuevo (poco frecuente).
 - Carpetas que crea el launcher en `%APPDATA%\MagikBurger Launcher\`:
