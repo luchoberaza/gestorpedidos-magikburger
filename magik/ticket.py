@@ -78,6 +78,7 @@ def contexto(conn: sqlite3.Connection, order_id: int, copias: Optional[int] = No
                 b["promo_price_cents"] = int(it["promo_price_cents"])
         else:
             item["kind"] = "item"
+            item["unidades"] = unidades(qty)
             bloques.append(item)
     for b in bloques:
         if b.get("kind") == "promo":
@@ -184,6 +185,12 @@ def _sep() -> bytes:
     return b"-" * ANCHO + b"\n"
 
 
+def unidades(n: Any) -> str:
+    """Cantidad de un producto (que no es combo) como la lee el local: "1 unidad", "2 unidades"."""
+    n = int(n or 1)
+    return f"{n} unidad" if n == 1 else f"{n} unidades"
+
+
 def _precio(cents: Any, simbolo: str = "$") -> str:
     pesos = f"{int(cents or 0) // 100:,}".replace(",", ".")
     return f"{ascii_(simbolo)} {pesos}"
@@ -232,7 +239,7 @@ def bytes_escpos_texto(ctx: Dict[str, Any], logo: Optional[bytes] = None) -> byt
                     out += _mods(c, ocultar, sim, "   ")
             else:
                 out += ESC + b"E\x01" + _lr(b["name"], precio) + ESC + b"E\x00"
-                out += _b(f'x{b["qty"]}') + b"\n"
+                out += _b(unidades(b["qty"])) + b"\n"
                 if not ocultar:
                     out += _lr("  Base", _precio(b["base_price_cents"], sim))
                 out += _mods(b, ocultar, sim)
@@ -399,7 +406,7 @@ def imagen_ticket(ctx: Dict[str, Any], logo: Optional[bytes]) -> Any:
                 mods(c, "    ")
         else:
             lr(b["name"], precio, f_item)
-            izq(f'x{b["qty"]}', f_sub)
+            izq(unidades(b["qty"]), f_sub)
             if not ocultar:
                 lr("   Base", _precio(b["base_price_cents"], sim), f_sub)
             mods(b)

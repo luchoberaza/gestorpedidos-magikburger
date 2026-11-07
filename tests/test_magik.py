@@ -295,6 +295,30 @@ class TestPedidos(Base):
         self.assertIn("La Burgue", html)
         self.assertIn("Vuelva pronto", html)
 
+    def test_ticket_dice_unidades_en_vez_de_x(self):
+        # Pedido del local (P-011): "cuando vendes 2 unidades de un producto que no es un
+        # combo […] que en vez de xalgo diga x unidades".
+        from magik.ticket import bytes_escpos_texto, contexto, unidades
+        self.assertEqual(unidades(1), "1 unidad")
+        self.assertEqual(unidades(2), "2 unidades")
+        items = [{"product_id": self.p1, "qty": 2}, {"product_id": self.p2, "qty": 1}]
+        r = self.pedido_api(items=items)
+        self.assertEqual(r.status_code, 200, r.get_json())
+        oid = r.get_json()["id"]
+        conn = self.db()
+        ctx = contexto(conn, oid)
+        conn.close()
+        # Sin los códigos de negrita de la térmica (ESC E 0/1), solo el texto de cada línea.
+        lineas = [x.replace(b"\x1bE\x00", b"").replace(b"\x1bE\x01", b"") for x in bytes_escpos_texto(ctx).split(b"\n")]
+        self.assertIn(b"2 unidades", lineas)
+        self.assertIn(b"1 unidad", lineas)
+        self.assertNotIn(b"x2", lineas)
+        self.assertNotIn(b"x1", lineas)
+        html = self.c.get(f"/orders/{oid}/ticket").get_data(as_text=True)
+        self.assertIn(">2 unidades<", html)
+        self.assertIn(">1 unidad<", html)
+        self.assertNotIn('class="it-qty">x', html)
+
     def test_total_distinto_al_de_la_pantalla_no_se_guarda(self):
         r = self.pedido_api(client_total_cents=1)
         self.assertEqual(r.status_code, 409)
