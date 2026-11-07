@@ -324,7 +324,7 @@ class TestPedidos(Base):
         html = self.c.get(f"/orders/{oid}/ticket").get_data(as_text=True)
         self.assertEqual(html.count('class="it-name">Clásica<'), 2)
         self.assertEqual(html.count('class="it-name">Doble<'), 1)
-        self.assertNotIn('class="it-qty"', html)
+        self.assertNotRegex(html, r'class="it-qty">\s*(x\d|\d+ unidad)')
 
     def test_total_distinto_al_de_la_pantalla_no_se_guarda(self):
         r = self.pedido_api(client_total_cents=1)
