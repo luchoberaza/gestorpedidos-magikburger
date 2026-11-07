@@ -295,29 +295,36 @@ class TestPedidos(Base):
         self.assertIn("La Burgue", html)
         self.assertIn("Vuelva pronto", html)
 
-    def test_ticket_dice_unidades_en_vez_de_x(self):
-        # Pedido del local (P-011): "cuando vendes 2 unidades de un producto que no es un
-        # combo […] que en vez de xalgo diga x unidades".
-        from magik.ticket import bytes_escpos_texto, contexto, unidades
-        self.assertEqual(unidades(1), "1 unidad")
-        self.assertEqual(unidades(2), "2 unidades")
-        items = [{"product_id": self.p1, "qty": 2}, {"product_id": self.p2, "qty": 1}]
-        r = self.pedido_api(items=items)
+    def test_factura_repite_cada_unidad(self):
+        # Pedido del local (P-011): "que salga literalmente las dos unidades de la magik,
+        # es decir que se repita dos veces no que se acumulen las unidades".
+        from magik.ticket import bytes_escpos_texto, contexto
+        items = [{"product_id": self.p1, "qty": 2, "removed_ingredient_ids": [self.i_ceb]},
+                 {"product_id": self.p2, "qty": 1}]
+        r = self.pedido_api(items=items, client_total_cents=2 * 30000 + 45000)
         self.assertEqual(r.status_code, 200, r.get_json())
         oid = r.get_json()["id"]
         conn = self.db()
         ctx = contexto(conn, oid)
         conn.close()
-        # Sin los códigos de negrita de la térmica (ESC E 0/1), solo el texto de cada línea.
-        lineas = [x.replace(b"\x1bE\x00", b"").replace(b"\x1bE\x01", b"") for x in bytes_escpos_texto(ctx).split(b"\n")]
-        self.assertIn(b"2 unidades", lineas)
-        self.assertIn(b"1 unidad", lineas)
-        self.assertNotIn(b"x2", lineas)
-        self.assertNotIn(b"x1", lineas)
+        sueltos = [b for b in ctx["blocks"] if b.get("kind") == "item"]
+        self.assertEqual([b["name"] for b in sueltos], ["Clásica", "Clásica", "Doble"])
+        self.assertEqual([b["qty"] for b in sueltos], [1, 1, 1])
+        self.assertEqual([b["line_total_cents"] for b in sueltos], [30000, 30000, 45000])
+        self.assertEqual([b["removed"] for b in sueltos[:2]], [["Cebolla"], ["Cebolla"]])
+        # Térmica (texto), sin los códigos de negrita (ESC E n) ni de tamaño (GS ! n): cada
+        # unidad en su renglón y sin "x2"/"x1".
+        import re
+        lineas = [re.sub(rb"\x1bE[\x00\x01]|\x1d![\x00-\xff]", b"", x) for x in bytes_escpos_texto(ctx).split(b"\n")]
+        self.assertEqual(sum(1 for x in lineas if x.startswith(b"Clasica ")), 2)
+        self.assertEqual(sum(1 for x in lineas if x.startswith(b"Doble ")), 1)
+        self.assertFalse([x for x in lineas if x.strip() in (b"x1", b"x2") or b"unidad" in x])
+        self.assertTrue(any(x.startswith(b"TOTAL") and x.endswith(b"$ 1.050") for x in lineas))
+        # La factura en pantalla (impresión común), igual.
         html = self.c.get(f"/orders/{oid}/ticket").get_data(as_text=True)
-        self.assertIn(">2 unidades<", html)
-        self.assertIn(">1 unidad<", html)
-        self.assertNotIn('class="it-qty">x', html)
+        self.assertEqual(html.count('class="it-name">Clásica<'), 2)
+        self.assertEqual(html.count('class="it-name">Doble<'), 1)
+        self.assertNotIn('class="it-qty"', html)
 
     def test_total_distinto_al_de_la_pantalla_no_se_guarda(self):
         r = self.pedido_api(client_total_cents=1)
