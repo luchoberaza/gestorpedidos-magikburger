@@ -24,8 +24,8 @@ actualización **solo al abrir la app**, sin reinstalar nada y **sin tocar su ba
 > `cd frontend && npm install && npm run build` y commiteá `static/dist/` junto con el
 > código. Los binarios (logo de fábrica, fuentes) no viajan por OTA: ya vienen en el
 > instalador. El logo propio del local se sube desde Configuración. Si algún día cambia el propio
-> launcher de Electron (`launcher/main.js`), eso sí necesita un reempaquetado e instalación
-> puntual (es raro).
+> launcher de Electron (`launcher/main.js`) o una dependencia de Python (`requirements.txt`),
+> eso sí necesita volver a armar el instalador y ejecutarlo en el local (es raro).
 
 ---
 
@@ -49,16 +49,11 @@ ya provee GitHub Actions. Solo asegurate de que en el repo estén habilitadas la
 
 ### 2) Compilar e instalar el launcher nuevo (una sola vez)
 
-El launcher con OTA hay que llevarlo al cliente una vez:
-
-```bash
-cd launcher
-npm install
-npm run dist
-```
-
-Esto genera el instalador en `launcher/dist/`. Instalalo en la PC del cliente
-**reemplazando** la versión vieja.
+El launcher con OTA hay que llevarlo al cliente una vez. Desde la 1.1.0 del launcher el
+instalador es completo (trae Python y las dependencias) y está publicado con un link fijo:
+ver [GUIA-INSTALACION-CLIENTE.md](GUIA-INSTALACION-CLIENTE.md). Para volver a armarlo:
+`launcher\build_launcher.bat` (con `-Publicar` lo sube a GitHub). Instalarlo encima de la
+versión vieja **no toca** la carpeta de datos.
 
 ### 3) ⚠️ Rescatar la base de datos del cliente (¡IMPORTANTE, una sola vez!)
 
@@ -71,12 +66,12 @@ nueva se reemplazan archivos, así que hay que rescatarla **antes**:
 2. Instalá la versión nueva.
 3. Abrí la app **una vez** y cerrala (esto crea la carpeta de datos persistente).
 4. Reemplazá el archivo:
-   `%APPDATA%\MagikBurger Launcher\data\magikburger.db`
+   `%APPDATA%\magikburger-launcher\data\magikburger.db`
    por la base real que copiaste en el paso 1.
 5. Volvé a abrir la app: ya usa los datos reales del cliente.
 
 > Si no estás seguro de la ruta de `%APPDATA%`, abrí `launcher.log` (está en esa misma
-> carpeta `%APPDATA%\MagikBurger Launcher\`): en cada arranque registra la línea
+> carpeta `%APPDATA%\magikburger-launcher\`): en cada arranque registra la línea
 > `userData: ...` con la ruta exacta.
 
 De acá en adelante, **la base nunca más se toca** por las actualizaciones.
@@ -101,10 +96,10 @@ No hay que reinstalar ni tocar nada en su PC.
   si no hay, abre con la versión que ya tenía y actualiza la próxima vez).
 - El esquema de la base se migra solo (migraciones versionadas en `magik/db.py`, con
   `PRAGMA user_version`). Antes de migrar una base con datos se guarda una copia en
-  `%APPDATA%\MagikBurger Launcher\data\respaldos\pre-migracion-…db`.
+  `%APPDATA%\magikburger-launcher\data\respaldos\pre-migracion-…db`.
 - Además hay respaldos automáticos (al abrir, una vez por día, y en cada cierre) en esa
   misma carpeta `respaldos`, y los PDF de los cierres en `reportes`.
 - Cambios en `launcher/main.js` (el shell de Electron) **no** viajan por OTA: requieren
   reempaquetar e instalar de nuevo (poco frecuente).
-- Carpetas que crea el launcher en `%APPDATA%\MagikBurger Launcher\`:
+- Carpetas que crea el launcher en `%APPDATA%\magikburger-launcher\`:
   `data/` (la base), `backends/` (versiones del backend descargadas) y `launcher.log`.

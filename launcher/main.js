@@ -284,6 +284,13 @@ async function checkAndApplyUpdate() {
 // =======================
 let backendProc = null;
 
+// Python embebido que viaja con el instalador (resources/python).
+function bundledPython() {
+  if (!app.isPackaged || process.platform !== "win32") return null;
+  const p = path.join(process.resourcesPath, "python", "pythonw.exe");
+  return fs.existsSync(p) ? p : null;
+}
+
 function stopBackend() {
   if (!backendProc) return;
   try {
@@ -328,9 +335,13 @@ async function spawnBackend(baseUrl, scriptDir, dbPath) {
     `m.app.run(host=r'''${host}''', port=int(${port}), debug=False, use_reloader=False)`
   ].join("; ");
 
-  const candidates = process.platform === "win32"
+  // Primero el Python que trae el instalador (embebido, con todas las dependencias):
+  // la PC no necesita tener Python. El del sistema queda solo como respaldo.
+  const sistema = process.platform === "win32"
     ? ["pythonw", "python", "py"]
     : ["python3", "python"];
+  const embebido = bundledPython();
+  const candidates = embebido ? [embebido, ...sistema] : sistema;
 
   // Pasamos la ruta de la DB por entorno (carpeta persistente del usuario).
   const childEnv = { ...process.env };
@@ -356,7 +367,8 @@ async function spawnBackend(baseUrl, scriptDir, dbPath) {
         log("backendProc error:", e?.message || String(e));
       });
 
-      const up = await waitForPort(host, port, 15000);
+      // El primer arranque en una PC nueva puede tardar más (antivirus revisando archivos).
+      const up = await waitForPort(host, port, cmd === embebido ? 45000 : 15000);
       if (up) {
         log("Backend UP:", host, port);
         return { ok: true, reused: false };
@@ -379,13 +391,28 @@ async function spawnBackend(baseUrl, scriptDir, dbPath) {
 // =======================
 let mainWindow = null;
 
+const BASE_URL = "http://127.0.0.1:5000";
+
+// Pantalla que se ve mientras se busca la actualización y arranca el servidor.
+// La app se carga recién cuando el servidor responde (antes se cargaba enseguida y
+// salía "No pude cargar la interfaz" hasta volver a abrirla).
+const PANTALLA_ARRANQUE = "data:text/html;charset=utf-8," + encodeURIComponent(`<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Magik</title><style>
+html,body{height:100%;margin:0;background:#05060d;color:#e7e9ee;font-family:"Segoe UI",system-ui,sans-serif}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.anillo{width:40px;height:40px;border-radius:50%;border:4px solid rgba(255,255,255,.1);border-top-color:#d946ef;animation:g .9s linear infinite}
+@keyframes g{to{transform:rotate(360deg)}}
+h1{margin:0;font-size:26px;font-weight:700;background:linear-gradient(135deg,#8b5cf6 0%,#d946ef 55%,#ec4899 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+p{margin:0;font-size:14px;color:#9aa3b2}
+</style></head><body><div class="anillo"></div><h1>Magik</h1><p>Abriendo…</p></body></html>`);
+
 function createWindow() {
-  const baseUrl = "http://127.0.0.1:5000";
+  const baseUrl = BASE_URL;
 
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
-    backgroundColor: "#0b0f14",
+    backgroundColor: "#05060d",
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -400,11 +427,13 @@ function createWindow() {
   // La impresión se hace dentro de la misma ventana (iframe oculto).
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 
-  // Cargamos la misma web (tu UI)
-  win.loadURL(baseUrl);
+  // Primero la pantalla de arranque; la UI real se carga cuando el backend está arriba.
+  win.loadURL(PANTALLA_ARRANQUE);
 
-  win.webContents.on("did-fail-load", async (_e, code, desc) => {
-    log("did-fail-load:", code, desc);
+  win.webContents.on("did-fail-load", async (_e, code, desc, url, isMainFrame) => {
+    // -3 = navegación interrumpida por otra (no es un error).
+    if (!isMainFrame || code === -3) return;
+    log("did-fail-load:", code, desc, url);
     await dialog.showMessageBox(win, {
       type: "error",
       title: "MagikBurger Launcher",
@@ -423,8 +452,23 @@ function createWindow() {
 // =======================
 // Main
 // =======================
-app.whenReady().then(async () => {
+// Una sola instancia: si la abren de nuevo (doble clic dos veces), se trae al frente
+// la ventana que ya está abierta en vez de arrancar otro servidor.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  app.whenReady().then(iniciar);
+}
+
+async function iniciar() {
   log("=== Launcher start ===");
+  log("version:", app.getVersion());
   log("userData:", getUserDataDir());
   log("log:", getLogPath());
   log("isPackaged:", app.isPackaged);
@@ -432,7 +476,7 @@ app.whenReady().then(async () => {
   // Creamos ventana PRIMERO y la guardamos (para que no muera la app)
   mainWindow = createWindow();
 
-  const baseUrl = "http://127.0.0.1:5000";
+  const baseUrl = BASE_URL;
 
   // Resolución de DB y backend según modo
   let dbPath = null;
@@ -460,22 +504,24 @@ app.whenReady().then(async () => {
   // Intentamos levantar backend
   const started = await spawnBackend(baseUrl, activeDir, dbPath);
 
-  if (!started.ok) {
-    log("Backend start failed:", started.error || "unknown");
-    await dialog.showMessageBox(mainWindow, {
-      type: "error",
-      title: "MagikBurger Launcher",
-      message:
-        "El launcher no pudo iniciar el servidor (backend).\n\n" +
-        "Causas típicas:\n" +
-        "- No hay Python instalado o no está en PATH\n" +
-        "- El instalador no incluyó backend_app (app.py/templates/static/db)\n\n" +
-        "Detalle:\n" + (started.error || "desconocido") + "\n\n" +
-        "Log:\n" + getLogPath(),
-      buttons: ["OK"],
-    });
+  if (started.ok) {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(baseUrl);
+    return;
   }
-});
+
+  log("Backend start failed:", started.error || "unknown");
+  await dialog.showMessageBox(mainWindow, {
+    type: "error",
+    title: "MagikBurger Launcher",
+    message:
+      "No se pudo iniciar Magik.\n\n" +
+      "Probá cerrar y volver a abrir. Si sigue igual, volvé a ejecutar el instalador " +
+      "(Instalar-Magik.exe): los datos no se pierden.\n\n" +
+      "Detalle:\n" + (started.error || "desconocido") + "\n\n" +
+      "Log:\n" + getLogPath(),
+    buttons: ["OK"],
+  });
+}
 
 app.on("before-quit", () => {
   stopBackend();

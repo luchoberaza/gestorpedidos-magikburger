@@ -1,0 +1,14 @@
+# Dependencias de Magik. Las mismas versiones con las que corren las pruebas.
+# El instalador (launcher/armar-instalador.ps1) las mete dentro del Python embebido,
+# así la PC del local no necesita tener Python ni instalar nada.
+Flask==3.1.2
+Werkzeug==3.1.4
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+itsdangerous==2.2.0
+click==8.3.1
+blinker==1.9.0
+colorama==0.4.6
+reportlab==4.5.1
+charset-normalizer==3.4.7
+pillow==12.2.0

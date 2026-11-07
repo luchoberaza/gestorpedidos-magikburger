@@ -13,6 +13,7 @@ Estados: `nuevo` → `en curso` → `hecho-local` → `verificado` · `parcial (
 | P-006 | 2026-11-06 | Responsable (sesión) | "un re diseño del gestor original […] agarres ese estilo de diseño y lo remodeles dejandolo mas lindo usando elementos de react" | UI completa | 🟢 | main | esperando deploy | React + framer-motion en `frontend/` → `static/dist` · recorrido Playwright de todas las pantallas · `main@7d0d8d1` |
 | P-007 | 2026-11-06 | Responsable (sesión) | "Nadie dijo para cambiar la contraseña del admin" — sacar el aviso que lo pedía | sesión / barra superior | 🟢 | main | esperando deploy | `test_admin_entra_con_la_clave_de_siempre_y_la_caja_sin_clave` · Playwright: el admin entra sin aviso y "Cambiar mi contraseña" sigue andando |
 | P-008 | 2026-11-06 | Responsable (sesión) | "una analitica del cliente que mas pide en el mes […] lo que los verifica son las direcciones […] 6 meses para atras […] los 5 que mas compraron" | Negocio → Mejores clientes | 🟢 | main | esperando deploy | `TestMejoresClientes` (7) · Playwright con 148 pedidos en 6 meses: meses, "6 meses", orden, Excel, celular, la Caja no la ve (403) |
+| P-009 | 2026-11-06 | Responsable (sesión) | "construi el instalador completo y que este en github, que con ejecutarlo se instale todo y se abra sin vuelta" | `launcher/` + release `instalador` | 🟢 | main | en curso | — |
 
 ## Detalle de P-001 (qué se trae de Caja Hamburguesería)
 

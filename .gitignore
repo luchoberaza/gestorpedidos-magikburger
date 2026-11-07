@@ -7,6 +7,9 @@ __pycache__/
 # ===== Node / Electron (build) =====
 launcher/node_modules/
 launcher/dist/
+# Python embebido que arma launcher/armar-instalador.ps1 (se regenera)
+launcher/python/
+launcher/descargas/
 # lockfile vacío generado por herramientas en la raíz (el del launcher SÍ se versiona)
 /package-lock.json
 

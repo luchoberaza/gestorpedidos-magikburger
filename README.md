@@ -35,6 +35,13 @@ npm install
 npm run build                      # deja static/dist/app.js y app.css
 ```
 
+## Instalación
+
+Instalador completo (trae Python y todo lo necesario):
+[Instalar-Magik.exe](https://github.com/luchoberaza/gestorpedidos-magikburger/releases/download/instalador/Instalar-Magik.exe).
+Paso a paso en [GUIA-INSTALACION-CLIENTE.md](GUIA-INSTALACION-CLIENTE.md); se arma con
+`launcher\build_launcher.bat`.
+
 ## Actualizaciones
 
 Ver [ACTUALIZACIONES.md](ACTUALIZACIONES.md): al pushear a `main`, el local recibe la
