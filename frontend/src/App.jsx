@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Bell, BarChart3, Boxes, Bike, ChevronDown, ClipboardList, KeyRound, LayoutDashboard, LogOut, Moon, Package, Receipt,
+  Bell, BarChart3, Boxes, Bike, ChevronRight, ClipboardList, KeyRound, LayoutDashboard, LogOut, Moon, Package, Receipt,
   Search, Settings, ShoppingBag, Sun, TrendingUp, Users, Wallet, ArrowRight, Repeat2, Trophy,
 } from "lucide-react";
 import { bus, get, global, iniciales, post, puede, toast } from "./lib";
 import { Btn, Desplegable, DialogosHost, Toasts, formulario, resorte } from "./ui";
+import { FondoLogin } from "./efectos";
 import Pos from "./vistas/Pos";
 import { Liquidacion, Pedidos } from "./vistas/Operacion";
 import { Gastos, Inicio, Reportes, Ventas } from "./vistas/Finanzas";
@@ -30,6 +31,7 @@ export const VISTAS = [
   { id: "configuracion", titulo: "Configuración", icono: Settings, grupo: "admin", permiso: ["configuracion"], Comp: Config, desc: "Negocio, ticket, respaldo…" },
 ];
 const GRUPOS = { negocio: "Negocio", admin: "Administración" };
+const CORTO = { caja: "Caja", negocio: "Negocio", admin: "Admin" };
 const permitida = (v) => v.permiso.some(puede);
 
 function aplicarTema(t) {
@@ -93,6 +95,7 @@ function Login({ sesion, mensaje, onEntrar }) {
   };
   return (
     <div className="login">
+      <FondoLogin />
       <motion.div className="login-c" initial={{ opacity: 0, y: 16, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={resorte}>
         <div className="marca-badge"><img src="/marca/logo" alt="" onError={(e) => { e.target.style.display = "none"; }} /></div>
         <h2>{sesion.negocio.nombre}</h2>
@@ -122,6 +125,9 @@ function Shell({ sesion, setSesion, onSalir }) {
   const [menu, setMenu] = useState(null);
   const [paleta, setPaleta] = useState(false);
   const [avisos, setAvisos] = useState([]);
+  const [sonando, setSonando] = useState(false);
+  const [rielHover, setRielHover] = useState(null);
+  const previos = useRef(0);
   const actual = visibles.find((v) => v.id === vista) || visibles[0];
 
   const ir = useCallback((id, p) => {
@@ -133,6 +139,12 @@ function Shell({ sesion, setSesion, onSalir }) {
   const cargarAvisos = useCallback(() => get("/api/notificaciones").then((r) => setAvisos(r.avisos)).catch(() => {}), []);
   useEffect(() => { cargarAvisos(); const t = setInterval(cargarAvisos, 120000); return () => clearInterval(t); }, [cargarAvisos]);
   useEffect(() => bus.on("avisos", cargarAvisos), [cargarAvisos]);
+  // La campana se mueve cuando llegan avisos nuevos (no a cada recarga).
+  useEffect(() => {
+    if (avisos.length > previos.current) { setSonando(true); const t = setTimeout(() => setSonando(false), 1200); previos.current = avisos.length; return () => clearTimeout(t); }
+    previos.current = avisos.length;
+    return undefined;
+  }, [avisos.length]);
 
   useEffect(() => {
     const k = (e) => {
@@ -148,34 +160,39 @@ function Shell({ sesion, setSesion, onSalir }) {
   const tema = document.documentElement.getAttribute("data-theme");
   const cambiarTema = () => { const t = tema === "claro" ? "oscuro" : "claro"; aplicarTema(t); setSesion({ ...sesion, negocio: { ...sesion.negocio, tema: t } }); post("/api/config/tema", { tema: t }).catch(() => {}); };
 
+  const logo = <img src="/marca/logo" alt="" onError={(e) => { e.target.replaceWith(document.createTextNode(iniciales(sesion.negocio.nombre))); }} />;
+  const menuGrupo = (g, lista) => (
+    <Desplegable abierto={menu === g} onClose={() => setMenu(null)} ancho={280}>
+      <div className="menu-t">{GRUPOS[g]}</div>
+      {lista.map((v) => <button key={v.id} className={`menu-i ${vista === v.id ? "on" : ""}`} onClick={() => ir(v.id)}><v.icono /><div>{v.titulo}<small>{v.desc}</small></div></button>)}
+    </Desplegable>
+  );
+  const rielProps = (id) => ({ hl: rielHover === id, onHover: (x) => setRielHover(x ? id : null) });
+
   return (
     <div className="app">
-      <header className="barra-sup">
-        <div className="marca" onClick={() => visibles[0] && ir(visibles[0].id)} title="Ir al inicio">
-          <div className="marca-badge"><img src="/marca/logo" alt="" onError={(e) => { e.target.replaceWith(document.createTextNode(iniciales(sesion.negocio.nombre))); }} /></div>
-          <div><b>{sesion.negocio.nombre}</b><small>{actual ? actual.titulo : ""}</small></div>
-        </div>
-
-        <nav className="nav">
-          {caja.map((v) => <NavBtn key={v.id} on={vista === v.id} icono={v.icono} onClick={() => ir(v.id)}>{v.corto || v.titulo}</NavBtn>)}
+      <aside className="riel" aria-label="Secciones">
+          <div className="marca-badge" title={`${sesion.negocio.nombre} · ir al inicio`} onClick={() => visibles[0] && ir(visibles[0].id)}>{logo}</div>
+          {caja.map((v) => <RielBtn key={v.id} on={vista === v.id} icono={v.icono} onClick={() => ir(v.id)} {...rielProps(v.id)}>{v.corto || v.titulo}</RielBtn>)}
+          {grupos.length > 0 && caja.length > 0 && <div className="riel-sep" />}
           {grupos.map(([g, lista]) => {
             const dentro = lista.find((v) => v.id === vista);
             return (
               <div key={g} className="rel">
-                <NavBtn on={!!dentro} icono={dentro ? dentro.icono : (g === "admin" ? Settings : LayoutDashboard)} chev onClick={() => setMenu(menu === g ? null : g)}>{dentro ? dentro.titulo : GRUPOS[g]}</NavBtn>
-                <Desplegable abierto={menu === g} onClose={() => setMenu(null)} ancho={280}>
-                  <div className="menu-t">{GRUPOS[g]}</div>
-                  {lista.map((v) => <button key={v.id} className={`menu-i ${vista === v.id ? "on" : ""}`} onClick={() => ir(v.id)}><v.icono /><div>{v.titulo}<small>{v.desc}</small></div></button>)}
-                </Desplegable>
+                <RielBtn on={!!dentro} icono={dentro ? dentro.icono : (g === "admin" ? Settings : LayoutDashboard)} onClick={() => setMenu(menu === g ? null : g)} {...rielProps(g)}>{CORTO[g]}</RielBtn>
+                {menuGrupo(g, lista)}
               </div>
             );
           })}
-        </nav>
+        </aside>
+      <div className="app-col">
+      <header className="barra-sup">
+        <div className="miga">{actual && <>{GRUPOS[actual.grupo] || CORTO[actual.grupo]}<ChevronRight /><b>{actual.titulo}</b></>}</div>
 
         <div className="top-acc">
           <button className="buscar-btn" onClick={() => setPaleta(true)} title="Buscar (Ctrl+K)"><Search /><span className="txt">Buscar</span><span className="kbd">Ctrl K</span></button>
           <div className="rel">
-            <button className="ibtn" title="Avisos" onClick={() => { cargarAvisos(); setMenu(menu === "avisos" ? null : "avisos"); }}><Bell />{avisos.length > 0 && <span className="punto" />}</button>
+            <button className={`ibtn ${sonando ? "sonando" : ""}`} title="Avisos" onClick={() => { cargarAvisos(); setMenu(menu === "avisos" ? null : "avisos"); }}><Bell />{avisos.length > 0 && <span className="punto" />}</button>
             <Desplegable abierto={menu === "avisos"} onClose={() => setMenu(null)} ancho={340}>
               <div className="menu-t">Avisos</div>
               {avisos.length ? avisos.map((a, i) => (
@@ -208,17 +225,22 @@ function Shell({ sesion, setSesion, onSalir }) {
           {actual ? <actual.Comp ir={ir} params={params} vista={actual} /> : <div className="t3">Tu usuario no tiene secciones habilitadas. Pedile permisos a un administrador.</div>}
         </motion.main>
       </AnimatePresence>
+      </div>
 
       <AnimatePresence>{paleta && <Paleta visibles={visibles} ir={ir} cerrar={() => setPaleta(false)} />}</AnimatePresence>
     </div>
   );
 }
 
-function NavBtn({ on, icono: I, chev, children, onClick }) {
+/* Botón del riel. El resaltado al pasar el mouse se desliza de un botón
+   al otro (AnimatedBackground de Motion Primitives) y el activo lleva la marca ámbar. */
+function RielBtn({ on, icono: I, children, onClick, hl, onHover }) {
   return (
-    <button type="button" className={`nav-btn ${on ? "on" : ""}`} onClick={onClick}>
-      {on && <motion.span layoutId="nav-ind" className="nav-ind" transition={resorte} />}
-      {I && <I />}<span className="lbl">{children}</span>{chev && <ChevronDown className="chev" />}
+    <button type="button" className={`riel-btn ${on ? "on" : ""}`} onClick={onClick} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
+      {hl && !on && <motion.span layoutId="riel-hl" className="riel-hl" transition={resorte} />}
+      {on && <motion.span layoutId="riel-ind" className="riel-ind" transition={resorte} />}
+      {on && <motion.span layoutId="riel-marca" className="riel-marca" transition={resorte} />}
+      {I && <I />}<span>{children}</span>
     </button>
   );
 }

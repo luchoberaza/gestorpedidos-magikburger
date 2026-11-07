@@ -1,8 +1,10 @@
 /* Componentes de interfaz reutilizables. */
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertTriangle, Check, CheckCircle2, Info, Inbox, Minus, Plus, X, XCircle } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Info, Inbox, Minus, Plus, X } from "lucide-react";
 import { bus, plata, rango, textoPeriodo } from "./lib";
+import { ValorAnimado } from "./efectos";
+import StatusMark from "./rb/StatusMark";
 
 export const resorte = { type: "spring", stiffness: 520, damping: 38 };
 
@@ -24,7 +26,7 @@ export function Kpi({ label, valor, sub, icono: I, c, grande, destacado, delta }
   return (
     <motion.div className={`kpi ${c || ""} ${grande ? "grande" : ""} ${destacado ? "destacado" : ""}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .25 }}>
       <div className="k-l">{I && <span className="k-i"><I /></span>}{label}{delta}</div>
-      <div className="k-v">{valor}</div>
+      <div className="k-v"><ValorAnimado valor={valor} /></div>
       {sub && <div className="k-s">{sub}</div>}
     </motion.div>
   );
@@ -265,23 +267,48 @@ export function Toasts() {
     setLista((l) => [...l.slice(-3), t]);
     setTimeout(() => setLista((l) => l.filter((x) => x.id !== t.id)), t.tipo === "error" ? 7000 : 3800);
   }), []);
-  const ic = { ok: CheckCircle2, error: XCircle, aviso: AlertTriangle, info: Check };
+  const ic = { aviso: AlertTriangle, info: Check };
   return (
     <div className="toasts">
       <AnimatePresence>
         {lista.map((t) => { const I = ic[t.tipo] || Info; return (
           <motion.div key={t.id} layout className={`toast ${t.tipo}`} initial={{ opacity: 0, y: 20, scale: .96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: .96 }} transition={resorte}
             onClick={() => setLista((l) => l.filter((x) => x.id !== t.id))}>
-            <span className="t-i"><I /></span><div className="crece"><b>{t.titulo}</b>{t.detalle && <span>{t.detalle}</span>}</div>
+            <span className="t-i">{t.tipo === "ok" || t.tipo === "error" ? <TildeAnimada estado={t.tipo} /> : <I />}</span><div className="crece"><b>{t.titulo}</b>{t.detalle && <span>{t.detalle}</span>}</div>
           </motion.div>); })}
       </AnimatePresence>
     </div>
   );
 }
 
+/* Tilde que se dibuja (StatusMark de React Bits): arranca girando y se completa. */
+function TildeAnimada({ estado }) {
+  const [st, setSt] = useState("running");
+  useEffect(() => { const t = setTimeout(() => setSt(estado === "ok" ? "done" : "failed"), 260); return () => clearTimeout(t); }, [estado]);
+  return <StatusMark status={st} size={18} strokeWidth={2.2} color="currentColor" doneColor="currentColor" errorColor="currentColor" />;
+}
+
 /* ---------------- Menú desplegable ---------------- */
+/* El resaltado sigue al mouse de una opción a otra (AnimatedBackground de Motion Primitives). */
+function useResaltado(ref, abierto) {
+  const [caja, setCaja] = useState(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!abierto || !el) { setCaja(null); return undefined; }
+    const sobre = (e) => {
+      const it = e.target.closest && e.target.closest("button.menu-i");
+      if (!it || !el.contains(it)) return;
+      setCaja({ top: it.offsetTop, left: it.offsetLeft, width: it.offsetWidth, height: it.offsetHeight });
+    };
+    const fuera = () => setCaja(null);
+    el.addEventListener("mouseover", sobre); el.addEventListener("mouseleave", fuera);
+    return () => { el.removeEventListener("mouseover", sobre); el.removeEventListener("mouseleave", fuera); };
+  }, [ref, abierto]);
+  return caja;
+}
 export function Desplegable({ abierto, onClose, children, alinear = "derecha", ancho }) {
   const ref = useRef(null);
+  const hl = useResaltado(ref, abierto);
   useEffect(() => {
     if (!abierto) return undefined;
     const f = (e) => { if (ref.current && !ref.current.parentElement.contains(e.target)) onClose(); };
@@ -292,13 +319,16 @@ export function Desplegable({ abierto, onClose, children, alinear = "derecha", a
   return (
     <AnimatePresence>
       {abierto && <motion.div ref={ref} className="menu" style={{ top: "calc(100% + 8px)", [alinear === "derecha" ? "right" : "left"]: 0, minWidth: ancho }}
-        initial={{ opacity: 0, y: -6, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -4, scale: .98 }} transition={{ duration: .14 }}>{children}</motion.div>}
+        initial={{ opacity: 0, y: -6, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -4, scale: .98 }} transition={{ duration: .14 }}>
+        <AnimatePresence>{hl && <motion.span className="menu-hl" style={{ inset: "auto", borderRadius: "var(--r-md)" }} initial={{ opacity: 0, ...hl }} animate={{ opacity: 1, ...hl }} exit={{ opacity: 0 }} transition={resorte} />}</AnimatePresence>
+        {children}</motion.div>}
     </AnimatePresence>
   );
 }
 
 /* ---------------- Gráficos (SVG animado, sin librerías) ---------------- */
-export const COLORES = ["#8b5cf6", "#ec4899", "#3b82f6", "#22c55e", "#f59e0b", "#06b6d4", "#f43f5e", "#a3e635", "#fb923c", "#94a3b8"];
+// Los colores de los gráficos salen de los tokens --c1…--c10 (estilos.css).
+export const COLORES = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)", "var(--c6)", "var(--c7)", "var(--c8)", "var(--c9)", "var(--c10)"];
 function useAncho(ref) {
   const [w, setW] = useState(600);
   useLayoutEffect(() => {

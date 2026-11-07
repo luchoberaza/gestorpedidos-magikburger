@@ -1,0 +1,60 @@
+/* Magik · look «Monstruo» (sale del logo: azul eléctrico, ámbar de los ojos, violeta de la boca).
+   Riel lateral, barra superior finita y botones y fichas que se hunden al tocarlos.
+   Los colores y medidas están en los tokens de estilos.css. */
+.app { flex-direction: row; }
+.riel { position: relative; z-index: 35; width: 88px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 0 12px;
+  background: var(--riel-bg); border-right: 1px solid var(--stroke); }
+.riel .marca-badge { width: 54px; height: 54px; border-radius: 18px; margin-bottom: 12px; cursor: pointer; background: #050816;
+  box-shadow: 0 0 0 2px var(--acc), 0 4px 0 2px var(--tinta); transition: transform .15s; }
+.riel .marca-badge:hover { transform: rotate(-6deg) scale(1.04); }
+.riel-btn { position: relative; width: 74px; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 4px 8px; border: 0; border-radius: 16px;
+  background: transparent; color: var(--txt-3); font-size: 11.5px; font-weight: 700; cursor: pointer; transition: color .15s; }
+.riel-btn > * { position: relative; z-index: 1; }
+.riel-btn svg { width: 22px; height: 22px; transition: transform .2s cubic-bezier(.3, 1.6, .5, 1); }
+.riel-btn:hover { color: var(--txt); }
+.riel-btn:hover svg { transform: translateY(-1px) scale(1.06); }
+.riel-btn.on { color: var(--txt); }
+.riel-btn.on svg { color: var(--acc-2); }
+.riel-btn .riel-hl { position: absolute; inset: 0; z-index: 0; border-radius: inherit; background: var(--s1); }
+.riel-btn .riel-ind { position: absolute; inset: 0; z-index: 0; border-radius: inherit; background: var(--acc-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 35%, transparent); }
+.riel-btn .riel-marca { position: absolute; left: -7px; top: 14px; bottom: 14px; width: 4px; border-radius: 0 4px 4px 0; background: var(--ambar); z-index: 1; }
+.riel-sep { width: 38px; height: 1px; background: var(--stroke-2); margin: 6px 0; }
+.riel .menu { left: calc(100% + 10px) !important; right: auto !important; top: -8px !important; }
+.barra-sup { padding: 10px 22px; background: transparent; border-bottom: 1px solid var(--stroke); backdrop-filter: none; }
+.top-acc { margin-left: auto; }
+.miga b { font-family: var(--f-disp); font-size: 15px; font-weight: var(--w-disp); }
+/* Botones y fichas que se hunden al tocarlos */
+.btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 0 0 transparent; }
+.btn.prim:active:not(:disabled) { transform: translateY(3px); box-shadow: var(--cta-hundido); }
+.btn.fant, .btn.peligro { box-shadow: none; }
+.btn.fant:active, .btn.peligro:active { transform: scale(.97); }
+.prod { border-color: var(--stroke-2); --brillo-borde: #9cc6ff; --brillo-luz: rgba(61, 139, 255, .14); }
+.prod:hover { transform: translateY(-2px); box-shadow: 0 6px 0 var(--tinta); border-color: color-mix(in srgb, var(--acc) 55%, transparent); }
+.prod:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--tinta); }
+.prod .p-n { font-family: var(--f-disp); font-weight: 650; font-size: 15px; letter-spacing: -.01em; }
+.prod .p-p { color: var(--ambar-2); font-size: 17px; }
+[data-theme="claro"] .prod .p-p { color: #b26a00; }
+.prod.promo { background: linear-gradient(155deg, rgba(160, 77, 232, .22), var(--s1) 70%); border-color: color-mix(in srgb, var(--promo) 50%, transparent); --brillo-borde: #d8b4fe; }
+.prod .p-cnt { font-family: var(--f-disp); font-size: 13.5px; min-width: 28px; height: 28px; }
+.kpi { box-shadow: 0 3px 0 var(--tinta), var(--panel-brillo); }
+.kpi .k-v { font-size: 30px; }
+.kpi.grande .k-v { font-size: 40px; }
+.kpi .k-i { border-radius: 50%; }
+.kpi.destacado { background: linear-gradient(155deg, rgba(255, 178, 30, .16), var(--s1) 65%); border-color: rgba(255, 178, 30, .35); }
+.kpi.destacado::after { background: radial-gradient(circle, rgba(255, 178, 30, .22), transparent 70%); }
+.kpi.destacado .k-v { color: var(--ambar-2); }
+[data-theme="claro"] .kpi.destacado .k-v { color: #a35f00; }
+.chip.on { background: var(--grad); box-shadow: 0 2px 0 #1a4fb8; }
+.tag.p { color: var(--promo-2); }
+.linea.promo { background: linear-gradient(155deg, rgba(160, 77, 232, .16), transparent 80%); border-color: color-mix(in srgb, var(--promo) 35%, transparent); }
+.mc-puesto.p1 { box-shadow: 0 0 0 2px var(--tinta); }
+.avatar { background: var(--ambar); color: #1c1100; }
+.login-c { background: color-mix(in srgb, var(--solid) 86%, transparent); box-shadow: 0 6px 0 var(--tinta), var(--sombra); }
+.login-c .marca-badge { width: 84px; height: 84px; border-radius: 26px; background: #050816; box-shadow: 0 0 0 3px var(--acc), 0 6px 0 3px var(--tinta); }
+.login-c h2 { font-size: 32px; }
+.est-way { background: linear-gradient(135deg, #7b2fd0, #a04de8); }
+@media (max-height: 760px) {
+  .riel { gap: 2px; padding-top: 10px; }
+  .riel .marca-badge { width: 46px; height: 46px; margin-bottom: 6px; }
+  .riel-btn { padding: 7px 4px 6px; }
+}

@@ -3,6 +3,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Bike, Check, MapPin, Pencil, Phone, Plus, Printer, Search, Sparkles, StickyNote, Trash2, X, Banknote, ArrowLeftRight, CreditCard } from "lucide-react";
 import { aCentavos, get, imprimirTicket, pesos, plata, post, toast } from "../lib";
 import { Btn, Modal, Paso, Seg, Tag, Vacio, abrir, avisar, confirmar, formulario, resorte } from "../ui";
+import { Haz, Monto, useBrillo } from "../efectos";
+import ClickSpark from "../rb/ClickSpark";
+
+// Chispa al tocar un producto (ClickSpark de React Bits), en los colores del logo.
+const CHISPA = ["#ffb21e", "#ffd36b", "#86b8ff"];
 
 const porId = (arr) => Object.fromEntries((arr || []).map((x) => [x.id, x]));
 const nuevo = (pm) => ({ phone: "", address: "", courier_id: "", payment_method: pm || "cash", notes: "", items: [], adjustments: [] });
@@ -35,6 +40,7 @@ function Editor({ boot, est, setEst, modo, orderId, onGuardar, guardando, refs }
   const [busq, setBusq] = useState("");
   const [sug, setSug] = useState([]);
   const dirRef = useRef(null), busRef = useRef(null);
+  const zonaBrillo = useBrillo();
   if (refs) { refs.dir = dirRef; refs.bus = busRef; }
   const prods = porId(boot.products), ing = porId(boot.ingredients);
   const pagos = boot.metodos_pago.filter((m) => m.active || m.code === est.payment_method);
@@ -42,6 +48,7 @@ function Editor({ boot, est, setEst, modo, orderId, onGuardar, guardando, refs }
   const cats = useMemo(() => [...new Set(boot.products.filter((p) => p.active && p.category).map((p) => p.category))].sort(), [boot]);
   const set = (k, v) => setEst((e) => ({ ...e, [k]: v }));
   const total = totalPedido(boot, est);
+  const listo = !falta(est) && !guardando; // el botón principal avisa que ya se puede guardar
 
   // Cliente conocido: por el teléfono se sugieren sus direcciones anteriores.
   useEffect(() => {
@@ -143,17 +150,19 @@ function Editor({ boot, est, setEst, modo, orderId, onGuardar, guardando, refs }
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (promos[0]) agregarPromo(promos[0]); else if (lista[0]) agregar(lista[0].id); e.target.select(); } }} /></div>
               {(cats.length > 0 || boot.promos.length > 0) && <Seg valor={filtro} onChange={setFiltro} opciones={[["", "Todo"], ...(boot.promos.length ? [["__p", "Promos", Sparkles]] : []), ...cats.map((c) => [c, c])]} />}
             </div>
-            <div className="mosaico">
-              {promos.map((p) => <motion.button key={"p" + p.id} className="prod promo" whileTap={{ scale: .95 }} onClick={() => agregarPromo(p)}>
+            <ClickSpark className="chispas" style={{ height: "auto" }} sparkColor={CHISPA} sparkCount={9} sparkRadius={26} sparkSize={9} duration={420}>
+            <div ref={zonaBrillo} className="mosaico desvanece brillo-zona"><div className="mosaico-g">
+              {promos.map((p) => <motion.button key={"p" + p.id} className="prod promo brillo" whileTap={{ scale: .95 }} onClick={() => agregarPromo(p)}>
                 <Tag c="p" icono={Sparkles}>Promo</Tag><span className="p-n">{p.name}</span><span className="p-p grad-t">{plata(p.price_cents)}</span>
                 <AnimatePresence>{promoCnt[p.id] && <motion.span key={promoCnt[p.id]} className="p-cnt" initial={{ scale: .4 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={resorte}>{promoCnt[p.id]}</motion.span>}</AnimatePresence>
               </motion.button>)}
-              {lista.map((p) => <motion.button key={p.id} className="prod" whileTap={{ scale: .95 }} onClick={() => agregar(p.id)}>
+              {lista.map((p) => <motion.button key={p.id} className="prod brillo" whileTap={{ scale: .95 }} onClick={() => agregar(p.id)}>
                 <span className="p-n">{p.name}</span><span className="p-p">{plata(p.price_cents)}</span>
                 <AnimatePresence>{enPedido[p.id] && <motion.span key={enPedido[p.id]} className="p-cnt" initial={{ scale: .4 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={resorte}>{enPedido[p.id]}</motion.span>}</AnimatePresence>
               </motion.button>)}
               {!promos.length && !lista.length && <div style={{ gridColumn: "1/-1" }}><Vacio titulo={boot.products.length ? "No hay productos que coincidan" : "Todavía no hay productos"} sub={boot.products.length ? "Probá con otra búsqueda." : "Cargalos en Productos y promos."} /></div>}
-            </div>
+            </div></div>
+            </ClickSpark>
           </div>
         </div>
       </div>
@@ -163,7 +172,7 @@ function Editor({ boot, est, setEst, modo, orderId, onGuardar, guardando, refs }
           <div className="fila"><h3>Pedido actual</h3><Tag c="v">{unidades} {unidades === 1 ? "ítem" : "ítems"}</Tag></div>
           <Btn v="peligro" ch onClick={async () => { if (!est.items.length && !est.adjustments.length) return; if (await confirmar("¿Vaciar el pedido?", { ok: "Vaciar", peligro: true })) setEst((e) => ({ ...e, items: [], adjustments: [] })); }}>Vaciar</Btn>
         </div>
-        <div className="pedido-l">
+        <div className="pedido-l desvanece">
           <AnimatePresence initial={false}>
             {bloques.map((b) => b.promo ? (
               <motion.div layout key={b.grupo} className="linea promo" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16, height: 0, marginTop: -9, padding: 0 }} transition={{ duration: .18 }}>
@@ -192,13 +201,13 @@ function Editor({ boot, est, setEst, modo, orderId, onGuardar, guardando, refs }
               {a.kind === "delivery" && <Bike size={15} />}<span className="crece trunc">{a.label}</span><b className={`num ${c < 0 ? "mal-t" : "ok-t"}`}>{c < 0 ? "−" : "+"} {plata(Math.abs(c))}</b>
               <Btn v="fant" ico ch icono={X} onClick={() => setEst((e) => ({ ...e, adjustments: e.adjustments.filter((_, k) => k !== i) }))} />
             </motion.div>); })}</AnimatePresence>
-          <div className="total"><span className="t-l">Total</span><motion.span key={total} className="t-v" initial={{ scale: 1.06, opacity: .6 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: .2 }}>{plata(total)}</motion.span></div>
+          <div className="total"><span className="t-l">Total</span><span className="t-v"><Monto cents={total} /></span></div>
           {modo === "nuevo" ? <>
             <div className="fila sb"><span className="t2 small b7">Copias del ticket</span>
               <Paso valor={boot.settings.ticket_copies} min={1} max={10} onChange={(n) => { boot.settings.ticket_copies = n; setEst((e) => ({ ...e })); post("/api/config/preferencia", { ticket_copies: n }).catch(() => {}); }} /></div>
-            <Btn v="prim" gr bloque icono={Printer} disabled={guardando} onClick={() => onGuardar(true)}>{guardando ? "Guardando…" : "Guardar + Imprimir"} <span className="kbd" style={{ color: "rgba(255,255,255,.85)", borderColor: "rgba(255,255,255,.35)", background: "transparent" }}>Ctrl+Enter</span></Btn>
+            <Btn v="prim" gr bloque icono={Printer} className={listo ? "listo" : ""} disabled={guardando} onClick={() => onGuardar(true)}>{guardando ? "Guardando…" : "Guardar + Imprimir"} <span className="kbd-cta">Ctrl+Enter</span><Haz /></Btn>
             <Btn v="fant" ch bloque disabled={guardando} onClick={() => onGuardar(false)}>Guardar sin imprimir</Btn>
-          </> : <Btn v="prim" gr bloque icono={Check} disabled={guardando} onClick={() => onGuardar(false)}>{guardando ? "Guardando…" : "Guardar cambios"}</Btn>}
+          </> : <Btn v="prim" gr bloque icono={Check} className={listo ? "listo" : ""} disabled={guardando} onClick={() => onGuardar(false)}>{guardando ? "Guardando…" : "Guardar cambios"}<Haz /></Btn>}
         </div>
       </div>
     </div>

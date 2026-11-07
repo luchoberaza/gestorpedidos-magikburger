@@ -1,0 +1,17 @@
+/* Fuentes de la interfaz (Geist para el texto, Bricolage Grotesque para títulos y números). Van embebidas en app.css (base64) porque la
+   actualización OTA solo transporta texto: no hay archivos de fuente aparte ni internet.
+   Solo el subconjunto latino (alcanza para el español: á é í ó ú ñ ü ¿ ¡). Licencia OFL-1.1. */
+@font-face {
+  font-family: "Geist Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2-variations");
+}
+@font-face {
+  font-family: "Bricolage Grotesque Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url("@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2") format("woff2-variations");
+}

@@ -12,6 +12,7 @@ export default defineConfig({
     emptyOutDir: true,
     target: "chrome110",
     cssCodeSplit: false,
+    assetsInlineLimit: 200000, // las fuentes viajan dentro de app.css (la OTA solo lleva texto)
     sourcemap: false,
     rollupOptions: {
       input: "src/main.jsx",
