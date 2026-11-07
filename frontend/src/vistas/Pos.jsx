@@ -138,9 +138,11 @@ function Editor({ boot, est, setEst, modo, orderId, onGuardar, guardando, refs }
         <div className="vidrio catalogo">
           <div className="vidrio-h"><h3>Productos</h3><Tag>click para agregar</Tag></div>
           <div className="vidrio-b">
-            <div className="inp-ic"><Search /><input ref={busRef} className="inp" type="search" placeholder="Buscar producto o promo…  (F3)" value={busq} onChange={(e) => setBusq(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (promos[0]) agregarPromo(promos[0]); else if (lista[0]) agregar(lista[0].id); e.target.select(); } }} /></div>
-            {(cats.length > 0 || boot.promos.length > 0) && <Seg valor={filtro} onChange={setFiltro} opciones={[["", "Todo"], ...(boot.promos.length ? [["__p", "Promos", Sparkles]] : []), ...cats.map((c) => [c, c])]} />}
+            <div className="catalogo-filtros">
+              <div className="inp-ic"><Search /><input ref={busRef} className="inp" type="search" placeholder="Buscar producto o promo…  (F3)" value={busq} onChange={(e) => setBusq(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (promos[0]) agregarPromo(promos[0]); else if (lista[0]) agregar(lista[0].id); e.target.select(); } }} /></div>
+              {(cats.length > 0 || boot.promos.length > 0) && <Seg valor={filtro} onChange={setFiltro} opciones={[["", "Todo"], ...(boot.promos.length ? [["__p", "Promos", Sparkles]] : []), ...cats.map((c) => [c, c])]} />}
+            </div>
             <div className="mosaico">
               {promos.map((p) => <motion.button key={"p" + p.id} className="prod promo" whileTap={{ scale: .95 }} onClick={() => agregarPromo(p)}>
                 <Tag c="p" icono={Sparkles}>Promo</Tag><span className="p-n">{p.name}</span><span className="p-p grad-t">{plata(p.price_cents)}</span>

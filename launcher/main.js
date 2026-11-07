@@ -414,6 +414,9 @@ function createWindow() {
     height: 800,
     backgroundColor: "#05060d",
     show: false,
+    // El menú de Electron (File, Edit, View…) no le sirve a la caja y le roba altura
+    // a la pantalla; con Alt se muestra igual.
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -421,7 +424,9 @@ function createWindow() {
     },
   });
 
-  win.once("ready-to-show", () => win.show());
+  // Siempre maximizada: con un tamaño fijo (1280×800), en pantallas de 768 de alto o con
+  // Windows al 125 % la ventana quedaba más grande que la pantalla y se tapaba lo de abajo.
+  win.once("ready-to-show", () => { win.maximize(); win.show(); });
 
   // Evitar que se abra una ventana/app nueva (ej: al imprimir tickets).
   // La impresión se hace dentro de la misma ventana (iframe oculto).
