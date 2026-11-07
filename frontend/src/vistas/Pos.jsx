@@ -10,7 +10,7 @@ import ClickSpark from "../rb/ClickSpark";
 const CHISPA = ["#ffb21e", "#ffd36b", "#86b8ff"];
 
 const porId = (arr) => Object.fromEntries((arr || []).map((x) => [x.id, x]));
-const nuevo = (pm) => ({ phone: "", address: "", courier_id: "", payment_method: pm || "cash", notes: "", items: [], adjustments: [] });
+const nuevo = (pm) => ({ phone: "", address: "", courier_id: "", payment_method: pm || "cash", notes: "", paga_con: "", items: [], adjustments: [] });
 const GUARDADO = "mb_pedido_en_curso";
 
 /* ---------------- Cálculo (idéntico al servidor) ---------------- */
@@ -26,12 +26,22 @@ function totalPedido(boot, e) {
   e.items.forEach((it) => { if (it.promo_group && !vistos.has(it.promo_group)) { vistos.add(it.promo_group); t += it.promo_price_cents || 0; } });
   return t + e.adjustments.reduce((s, a) => s + (parseInt(a.amount_cents, 10) || 0), 0);
 }
+// Con cuánto paga en efectivo (P-014): la factura le dice al repartidor cuánto vuelto llevar.
+const esEfectivo = (boot, e) => { const m = boot.metodos_pago.find((x) => x.code === e.payment_method); return m ? !!m.is_cash : e.payment_method === "cash"; };
+const pagaConCents = (boot, e) => (esEfectivo(boot, e) && String(e.paga_con || "").trim() ? aCentavos(e.paga_con) : null);
 const cuerpoPedido = (boot, e) => ({
   phone: e.phone.trim(), address: e.address.trim(), notes: (e.notes || "").trim(),
   courier_id: e.courier_id ? parseInt(e.courier_id, 10) : null, payment_method: e.payment_method,
   items: e.items, adjustments: e.adjustments, client_total_cents: totalPedido(boot, e),
+  paga_con_cents: pagaConCents(boot, e),
 });
-const falta = (e) => (!e.address.trim() || !e.phone.trim()) ? "Completá la dirección y el teléfono." : !e.items.length ? "El pedido está vacío: agregá al menos un producto." : null;
+const falta = (boot, e) => {
+  if (!e.address.trim() || !e.phone.trim()) return "Completá la dirección y el teléfono.";
+  if (!e.items.length) return "El pedido está vacío: agregá al menos un producto.";
+  const pc = pagaConCents(boot, e);
+  if (pc != null && pc < totalPedido(boot, e)) return "Con lo que paga no alcanza: corregí el monto o dejalo vacío.";
+  return null;
+};
 const iconoPago = (m) => (m.is_cash ? Banknote : m.code === "transfer" ? ArrowLeftRight : CreditCard);
 
 /* ---------------- Editor (caja y edición) ---------------- */
@@ -48,7 +58,7 @@ function Editor({ boot, est, setEst, modo, orderId, onGuardar, guardando, refs }
   const cats = useMemo(() => [...new Set(boot.products.filter((p) => p.active && p.category).map((p) => p.category))].sort(), [boot]);
   const set = (k, v) => setEst((e) => ({ ...e, [k]: v }));
   const total = totalPedido(boot, est);
-  const listo = !falta(est) && !guardando; // el botón principal avisa que ya se puede guardar
+  const listo = !falta(boot, est) && !guardando; // el botón principal avisa que ya se puede guardar
 
   // Cliente conocido: por el teléfono se sugieren sus direcciones anteriores.
   useEffect(() => {
@@ -138,7 +148,8 @@ function Editor({ boot, est, setEst, modo, orderId, onGuardar, guardando, refs }
               <select className="inp" value={est.courier_id} onChange={(e) => set("courier_id", e.target.value)}><option value="">Sin asignar</option>{reps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
             <div className="campo ancho2"><label>Pago</label>
               <Seg full gr valor={est.payment_method} onChange={(v) => set("payment_method", v)} opciones={pagos.map((m) => [m.code, m.name, iconoPago(m), m.is_cash ? "verde" : "azul"])} /></div>
-            <div className="campo"><label><StickyNote size={14} /> Nota</label><input className="inp" value={est.notes} maxLength={200} placeholder="Para cocina o reparto" onChange={(e) => set("notes", e.target.value)} /></div>
+            <PagaCon boot={boot} est={est} total={total} onChange={(v) => set("paga_con", v)} />
+            <div className="campo ancho3"><label><StickyNote size={14} /> Nota</label><input className="inp" value={est.notes} maxLength={200} placeholder="Para cocina o reparto" onChange={(e) => set("notes", e.target.value)} /></div>
           </div>
         </div>
 
@@ -214,6 +225,22 @@ function Editor({ boot, est, setEst, modo, orderId, onGuardar, guardando, refs }
   );
 }
 
+/* Con cuánto paga el cliente: se anota solo en efectivo y muestra el vuelto al lado. */
+function PagaCon({ boot, est, total, onChange }) {
+  const efectivo = esEfectivo(boot, est);
+  const pc = pagaConCents(boot, est);
+  const vuelto = pc != null ? pc - total : null;
+  return (
+    <div className="campo"><label><Banknote size={14} /> Paga con</label>
+      <div className="inp-sufijo">
+        <input className={`inp ${vuelto != null && vuelto < 0 ? "err" : ""}`} inputMode="decimal" maxLength={12} disabled={!efectivo}
+          value={efectivo ? est.paga_con || "" : ""} placeholder={efectivo ? "Ej: 2000" : "Solo en efectivo"} onChange={(e) => onChange(e.target.value)} autoComplete="off" />
+        {vuelto != null && <span className={vuelto < 0 ? "mal-t" : "ok-t"}>{vuelto < 0 ? `Faltan ${plata(-vuelto)}` : `Vuelto ${plata(vuelto)}`}</span>}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Modificar un ítem ---------------- */
 function Modificar({ boot, est, setEst, indice, cerrar, arriba }) {
   const [i, setI] = useState(indice);
@@ -257,7 +284,7 @@ export default function Pos() {
 
   const guardar = useCallback(async (imprimir) => {
     if (guardando || !boot) return;
-    const f = falta(est);
+    const f = falta(boot, est);
     if (f) { toast("Falta completar", f, "aviso"); if (!est.address.trim() && refs.dir.current) refs.dir.current.focus(); return; }
     setGuardando(true);
     try {
@@ -294,7 +321,7 @@ export async function editarPedido(orderId, alGuardar) {
   const promos = porId(boot.promos);
   const inicial = {
     phone: r.order.phone || "", address: r.order.address || "", courier_id: r.order.courier_id ? String(r.order.courier_id) : "",
-    payment_method: r.order.payment_method || "cash", notes: r.order.notes || "",
+    payment_method: r.order.payment_method || "cash", notes: r.order.notes || "", paga_con: r.order.paga_con_cents ? pesos(r.order.paga_con_cents) : "",
     items: r.items.map((it) => ({ product_id: it.product_id, qty: it.qty || 1, removed_ingredient_ids: it.removed_ingredient_ids || [], added_ingredient_ids: it.added_ingredient_ids || [],
       ...(it.promo_group ? { promo_group: it.promo_group, promo_id: it.promo_id, promo_name: it.promo_name, promo_price_cents: it.promo_price_cents } : {}) })),
     adjustments: r.adjustments.map((a) => ({ label: a.label, amount_cents: a.amount_cents, kind: a.kind || "" })),
@@ -308,7 +335,7 @@ export async function editarPedido(orderId, alGuardar) {
     const [est, setEst] = useState(inicial);
     const [guardando, setGuardando] = useState(false);
     const guardar = async () => {
-      const f = falta(est);
+      const f = falta(boot, est);
       if (f) return toast("Falta completar", f, "aviso");
       setGuardando(true);
       const body = cuerpoPedido(boot, est);

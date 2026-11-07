@@ -693,5 +693,139 @@ class TestImportarCaja(Base):
         self.assertEqual(r.status_code, 400)
 
 
+# ===========================================================================
+class TestPagaCon(Base):
+    """P-014 (responsable, 7-nov): "Paga con $ 2.000 → vuelto $ 370 […] La 3 sí, tipo por ahora podría ayudar".
+    En efectivo se anota con cuánto paga el cliente; la factura le dice al repartidor cuánto vuelto llevar."""
+
+    def setUp(self):
+        super().setUp()
+        self.catalogo()
+
+    def test_el_vuelto_es_lo_que_sobra_y_no_alcanzar_es_un_error(self):
+        from magik.dominio.pedidos import PagaConInvalido, paga_con
+        self.assertEqual(paga_con(200000, 163000, True), 200000)
+        self.assertEqual(paga_con(163000, 163000, True), 163000)  # justo: vuelto 0
+        self.assertIsNone(paga_con(None, 163000, True))           # no lo anotaron
+        self.assertIsNone(paga_con("", 163000, True))
+        self.assertIsNone(paga_con(200000, 163000, False))        # transferencia: no hay vuelto
+        with self.assertRaises(PagaConInvalido):
+            paga_con(100000, 163000, True)
+
+    def test_efectivo_guarda_con_cuanto_paga_y_la_factura_dice_el_vuelto(self):
+        from magik.ticket import bytes_escpos_texto, contexto
+        r = self.pedido_api(paga_con_cents=50000, client_total_cents=30000)
+        self.assertEqual(r.status_code, 200, r.get_json())
+        oid = r.get_json()["id"]
+        self.assertEqual(self.c.get(f"/api/orders/{oid}").get_json()["order"]["paga_con_cents"], 50000)
+        conn = self.db()
+        ctx = contexto(conn, oid)
+        conn.close()
+        self.assertEqual((ctx["order"]["paga_con_cents"], ctx["order"]["vuelto_cents"]), (50000, 20000))
+        texto = bytes_escpos_texto(ctx)
+        self.assertIn(b"Paga con", texto)
+        self.assertIn(b"$ 500", texto)
+        self.assertIn(b"Vuelto", texto)
+        self.assertIn(b"$ 200", texto)
+        html = self.c.get(f"/orders/{oid}/ticket").get_data(as_text=True)
+        self.assertIn("Paga con", html)
+        self.assertIn("Vuelto", html)
+        tablero = self.c.get("/api/board").get_json()
+        self.assertEqual(next(o for o in tablero["new"] if o["id"] == oid)["paga_con_cents"], 50000)
+
+    def test_si_no_alcanza_no_se_guarda_y_explica_por_que(self):
+        antes = self.db().execute("SELECT COUNT(*) FROM orders;").fetchone()[0]
+        r = self.pedido_api(paga_con_cents=20000, client_total_cents=30000)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("no alcanza", r.get_json()["error"])
+        self.assertFalse(r.get_json().get("stale"))  # no es "cambiaron los precios"
+        self.assertEqual(self.db().execute("SELECT COUNT(*) FROM orders;").fetchone()[0], antes)
+
+    def test_transferencia_y_pedido_sin_dato_no_imprimen_vuelto(self):
+        from magik.ticket import bytes_escpos_texto, contexto
+        t = self.pedido_api(payment_method="transfer", paga_con_cents=50000).get_json()["id"]
+        sin = self.pedido_api().get_json()["id"]
+        conn = self.db()
+        self.assertIsNone(conn.execute("SELECT paga_con_cents FROM orders WHERE id=?;", (t,)).fetchone()[0])
+        for oid in (t, sin):
+            self.assertNotIn(b"Vuelto", bytes_escpos_texto(contexto(conn, oid)))
+        conn.close()
+
+    def test_al_editar_se_puede_cambiar_o_sacar(self):
+        oid = self.pedido_api(paga_con_cents=50000).get_json()["id"]
+        cuerpo = {"phone": "099 111 222", "address": "Brasil 1234", "courier_id": self.juan, "payment_method": "cash",
+                  "items": [{"product_id": self.p1, "qty": 1}], "adjustments": []}
+        self.assertEqual(self.c.post(f"/api/orders/{oid}/update", json={**cuerpo, "paga_con_cents": 100000}).status_code, 200)
+        self.assertEqual(self.c.get(f"/api/orders/{oid}").get_json()["order"]["paga_con_cents"], 100000)
+        self.assertEqual(self.c.post(f"/api/orders/{oid}/update", json=cuerpo).status_code, 200)
+        self.assertIsNone(self.c.get(f"/api/orders/{oid}").get_json()["order"]["paga_con_cents"])
+
+
+# ===========================================================================
+class TestGananciaPorProducto(Base):
+    """P-013 (responsable, 7-nov): "cuánto deja cada hamburguesa […] sí está bueno. Eso podría dejarlo como resumen".
+    Precio − costo de la receta (insumos × costo de Inventario). Sin receta o sin costo no se inventa: se avisa."""
+
+    def setUp(self):
+        super().setUp()
+        self.catalogo()  # Clásica $300, Doble $450, Promo 2 = Clásica + Doble a $600
+        conn = self.db()
+        cur = conn.cursor()
+        cur.execute("INSERT INTO insumos(nombre, unidad, stock, costo_unit_cents) VALUES('Medallón', 'unidades', 50, 6000);")
+        med = cur.lastrowid
+        cur.execute("INSERT INTO insumos(nombre, unidad, stock, costo_unit_cents) VALUES('Pan', 'unidades', 50, 1800);")
+        pan = cur.lastrowid
+        cur.execute("INSERT INTO insumos(nombre, unidad, stock, costo_unit_cents) VALUES('Salsa', 'kg', 2, 0);")
+        self.salsa = cur.lastrowid
+        cur.execute("INSERT INTO recetas(product_id, insumo_id, cantidad) VALUES(?,?,1),(?,?,1);", (self.p1, med, self.p1, pan))
+        cur.execute("INSERT INTO products(name, price_cents, active) VALUES('Papas', 20000, 1);")
+        self.papas = cur.lastrowid
+        cur.execute("INSERT INTO recetas(product_id, insumo_id, cantidad) VALUES(?,?,0.05);", (self.papas, self.salsa))
+        conn.commit()
+        conn.close()
+        promo = [{"product_id": self.p1, "qty": 1, "promo_group": "G1", "promo_id": self.promo},
+                 {"product_id": self.p2, "qty": 1, "promo_group": "G1", "promo_id": self.promo}]
+        self.assertEqual(self.pedido_api(items=[{"product_id": self.p1, "qty": 2}]).status_code, 200)
+        self.assertEqual(self.pedido_api(items=promo).status_code, 200)
+        self.admin()
+
+    def _resumen(self):
+        r = self.c.get("/api/reportes")
+        self.assertEqual(r.status_code, 200, r.get_json())
+        g = r.get_json()["ganancia_productos"]
+        return g, {f["nombre"]: f for f in g["filas"]}
+
+    def test_cuanto_deja_cada_producto_con_su_receta(self):
+        g, f = self._resumen()
+        clasica = f["Clásica"]
+        self.assertEqual((clasica["precio_cents"], clasica["costo_cents"], clasica["deja_cents"]), (30000, 7800, 22200))
+        self.assertEqual(clasica["margen"], 74)
+        self.assertEqual((clasica["vendidas"], clasica["ganancia_cents"]), (2, 44400))  # solo las sueltas
+        self.assertEqual(g["ganancia_cents"], 44400)
+        self.assertEqual(g["margen"], 74)
+
+    def test_sin_receta_o_sin_costo_no_se_inventa(self):
+        g, f = self._resumen()
+        self.assertEqual(f["Doble"]["estado"], "sin_receta")
+        self.assertIsNone(f["Doble"]["costo_cents"])
+        self.assertEqual(f["Papas"]["estado"], "sin_costo")
+        self.assertEqual(f["Papas"]["faltan"], ["Salsa"])
+        promo = f["Promo 2"]
+        self.assertTrue(promo["promo"])
+        self.assertEqual((promo["vendidas"], promo["precio_cents"]), (1, 60000))
+        self.assertIsNone(promo["ganancia_cents"])  # la Doble no tiene receta
+        self.assertEqual(g["sin_costo"], 3)
+
+    def test_la_caja_no_ve_el_resumen_y_el_excel_lo_trae(self):
+        x = self.c.get("/api/exportar.xlsx?tipo=completo")
+        self.assertEqual(x.status_code, 200)
+        with zipfile.ZipFile(io.BytesIO(x.data)) as z:
+            hojas = z.read("xl/workbook.xml").decode("utf-8")
+        self.assertIn("Ganancia por producto", hojas)
+        self.c.post("/api/logout")
+        self.assertEqual(self.c.post("/api/login", json={"username": "caja", "password": ""}).status_code, 200)
+        self.assertEqual(self.c.get("/api/reportes").status_code, 403)
+
+
 if __name__ == "__main__":
     unittest.main()

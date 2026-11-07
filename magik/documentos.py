@@ -13,7 +13,7 @@ from xml.sax.saxutils import escape
 
 from . import config
 from .db import APP_DIR, carpeta, carpeta_datos
-from .dominio import finanzas, liquidacion
+from .dominio import costos, finanzas, liquidacion
 from .dominio.pedidos import money
 
 
@@ -531,6 +531,16 @@ def hojas_reporte(conn: Any, tipo: str, desde: str, hasta: str) -> List[Dict[str
                                                           ("Total", "moneda")],
                       "filas": [[p["nombre"], p["unidades"], p["total_cents"]]
                                 for p in finanzas.ranking_productos(conn, desde, hasta, 0)]})
+        gp = costos.ganancia_por_producto(conn, desde, hasta)
+        estado = {"sin_receta": "Sin receta", "sin_costo": "Falta el costo de un insumo"}
+        hojas.append({"nombre": "Ganancia por producto", "columnas": [
+            ("Producto", "texto"), ("Precio", "moneda"), ("Costo (receta)", "moneda"), ("Deja por unidad", "moneda"),
+            ("Margen %", "numero"), ("Vendidas", "numero"), ("Ganancia del período", "moneda"), ("Nota", "texto")],
+            "filas": [[("Promo · " if f["promo"] else "") + f["nombre"], f["precio_cents"], f["costo_cents"],
+                       f["deja_cents"], f["margen"], f["vendidas"], f["ganancia_cents"],
+                       estado.get(f["estado"], "") + (": " + ", ".join(f["faltan"]) if f["faltan"] else "")]
+                      for f in gp["filas"]],
+            "total": ["TOTAL", "", "", "", gp["margen"], "", gp["ganancia_cents"], ""]})
     if tipo in ("gastos", "completo"):
         gs = finanzas.gastos(conn, desde, hasta)
         hojas.append({"nombre": "Gastos", "columnas": [

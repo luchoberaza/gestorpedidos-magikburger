@@ -7,8 +7,8 @@ import { opciones } from "./Finanzas";
 
 const TIPOS = { entrada: ["Entrada", "g"], salida: ["Salida", "r"], ajuste: ["Conteo", "a"], consumo: ["Consumo", "v"], venta: ["Venta", "v"] };
 
-export default function Inventario() {
-  const [tab, setTab] = useState("insumos");
+export default function Inventario({ params }) {
+  const [tab, setTab] = useState((params && params.tab) || "insumos");
   return <>
     <Encabezado titulo="Inventario" sub="Insumos, stock mínimo, movimientos y recetas" />
     <Tabs valor={tab} onChange={setTab} tabs={[["insumos", "Insumos y stock"], ["movimientos", "Movimientos"], ["recetas", "Recetas (descuento automático)"]]} />

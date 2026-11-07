@@ -11,6 +11,7 @@ from .. import auth, config
 from ..db import ahora_iso, get_db
 from ..documentos import hojas_reporte, pdf_reporte, xlsx
 from ..dominio import clientes
+from ..dominio import costos
 from ..dominio import finanzas as fin
 from ..dominio import liquidacion as liq
 from ..dominio import stock
@@ -368,7 +369,8 @@ def api_reportes():
     for k, rg in _rangos(hoy).items():
         ganancias[k] = fin.resumen(conn, rg["desde"], rg["hasta"], detalle=False)["balance_cents"]
     return ok(resumen=fin.resumen(conn, desde, hasta), ganancias=ganancias,
-              meses=fin.comparacion_meses(conn, hoy, 6))
+              meses=fin.comparacion_meses(conn, hoy, 6),
+              ganancia_productos=costos.ganancia_por_producto(conn, desde, hasta))
 
 
 # ---------------------------------------------------------------------------

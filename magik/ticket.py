@@ -98,6 +98,9 @@ def contexto(conn: sqlite3.Connection, order_id: int, copias: Optional[int] = No
         copias = int(cfg["ticket_copies"])
 
     creado = str(o["created_at"]).replace("T", " ")
+    # Con cuánto paga en efectivo (P-014): la factura le dice al repartidor cuánto vuelto llevar.
+    paga = o["paga_con_cents"] if "paga_con_cents" in o.keys() else None
+    paga = int(paga) if paga and not ocultar and medio.get("is_cash", 1) else None
     return {
         "order": {
             "id": int(o["id"]), "ddmm": f"{creado[8:10]}/{creado[5:7]}", "hhmm": creado[11:16],
@@ -106,6 +109,8 @@ def contexto(conn: sqlite3.Connection, order_id: int, copias: Optional[int] = No
             "total_cents": int(o["total_cents"] or 0),
             "medio": medio["name"], "ocultar_precios": ocultar,
             "texto_pagado": "TRANSFERIDO" if (medio.get("code") == "transfer") else "PAGADO",
+            "paga_con_cents": paga,
+            "vuelto_cents": (paga - int(o["total_cents"] or 0)) if paga else None,
             # compatibilidad con la plantilla anterior
             "payment_method": "transfer" if ocultar else "cash",
         },
@@ -246,7 +251,11 @@ def bytes_escpos_texto(ctx: Dict[str, Any], logo: Optional[bytes] = None) -> byt
                 out += _lr(a["label"], ("- " if amt < 0 else "+ ") + _precio(abs(amt), sim))
         out += _sep() + ESC + b"E\x01" + GS + b"!\x01"
         out += _lr("TOTAL", o["texto_pagado"] if ocultar else _precio(o["total_cents"], sim))
-        out += GS + b"!\x00" + ESC + b"E\x00" + b"\n"
+        out += GS + b"!\x00" + ESC + b"E\x00"
+        if o.get("paga_con_cents"):
+            out += _lr("Paga con", _precio(o["paga_con_cents"], sim))
+            out += ESC + b"E\x01" + _lr("Vuelto", _precio(o["vuelto_cents"], sim)) + ESC + b"E\x00"
+        out += b"\n"
         if neg["pie"]:
             out += ESC + b"a\x01" + _b(neg["pie"]) + b"\n" + ESC + b"a\x00"
         out += b"\n\n\n\n" + GS + b"V\x42\x00"
@@ -412,6 +421,9 @@ def imagen_ticket(ctx: Dict[str, Any], logo: Optional[bytes]) -> Any:
             lr(a["label"], ("- " if amt < 0 else "+ ") + _precio(abs(amt), sim), f_sub)
     guiones()
     lr("TOTAL", o["texto_pagado"] if ocultar else _precio(o["total_cents"], sim), f_total)
+    if o.get("paga_con_cents"):
+        lr("Paga con", _precio(o["paga_con_cents"], sim), f_sub)
+        lr("Vuelto", _precio(o["vuelto_cents"], sim), f_item)
     st["y"] += 6
     if neg["pie"]:
         centro(neg["pie"], f_pie)

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, Bike, CalendarClock, Check, Download, FileSpreadsheet, FileText, Pencil, Plus, Printer, Receipt, ShoppingBag, Trash2, TrendingUp, Wallet, Boxes } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Bike, CalendarClock, Check, Coins, Download, FileSpreadsheet, FileText, Pencil, Percent, Plus, Printer, Receipt, ShoppingBag, Trash2, TrendingUp, Wallet, Boxes } from "lucide-react";
 import { bus, del, descargar, fecha, fechaCorta, fechaHora, get, hoy, imprimirTicket, intentar, numero, periodo, pesos, plata, post, put, puede, qs, textoPeriodo, toast } from "../lib";
-import { BarraPeriodo, Barras, Btn, COLORES, Cargando, Delta, Desplegable, Dona, Kpi, Ranking, Tabla, Tabs, Tag, Vacio, Vidrio, confirmar, formulario, useCarga } from "../ui";
+import { Aviso, BarraPeriodo, Barras, Btn, COLORES, Cargando, Delta, Desplegable, Dona, Kpi, Ranking, Tabla, Tabs, Tag, Vacio, Vidrio, confirmar, formulario, useCarga } from "../ui";
 import { Encabezado } from "./Operacion";
 
 let cacheOpc = null;
@@ -207,7 +207,7 @@ function PagosFijos() {
 
 /* ---------------- Reportes ---------------- */
 let perRep = periodo("mes");
-export function Reportes() {
+export function Reportes({ ir }) {
   const [per, setPer] = useState(perRep);
   const [menu, setMenu] = useState(false);
   useEffect(() => { perRep = per; }, [per]);
@@ -249,11 +249,38 @@ export function Reportes() {
           <div><h3>Productos más vendidos</h3><Tabla filas={s.top_productos} vacio="Sin ventas en el período" columnas={[{ t: "#", v: (_, i) => i + 1 }, { t: "Producto", v: (p) => <>{p.nombre} {p.promo && <Tag c="p">promo</Tag>}</> }, { t: "Unidades", der: true, v: (p) => numero(p.unidades) }, { t: "Total", der: true, v: (p) => <b>{plata(p.total_cents)}</b> }]} /></div>
           <div><h3>Por repartidor</h3><Tabla filas={s.por_repartidor} vacio="Sin pedidos en el período" columnas={[{ t: "Repartidor", k: "nombre" }, { t: "Pedidos", k: "pedidos", der: true }, { t: "Ventas", der: true, v: (x) => plata(x.ventas_cents) }, { t: "Envíos", der: true, v: (x) => plata(x.envios_cents) }]} /></div>
         </div>
+        <GananciaProductos g={r.ganancia_productos} ir={ir} />
         <h3 className="mt-l">Historial de cierres</h3>
         <Tabla filas={c.cierres.filter((x) => (!per.desde || x.jornada >= per.desde) && (!per.hasta || x.jornada <= per.hasta))} vacio="Sin cierres en el período"
           columnas={[{ t: "N°", v: (x) => <b>#{x.id}</b> }, { t: "Jornada", v: (x) => fecha(x.jornada) }, { t: "Cerró", v: (x) => <>{x.user_name || "—"} <span className="t3 small">{fechaHora(x.created_at)}</span></> }, { t: "Pedidos", k: "orders_count", der: true }, { t: "Facturado", der: true, v: (x) => plata(x.gross_total_cents) }, { t: "Rendido", der: true, v: (x) => <b>{plata(x.cash_to_render_cents)}</b> }, { t: "", min: true, v: (x) => <Btn ch icono={FileText} onClick={() => descargar(`/api/cierres/${x.id}/pdf`)}>PDF</Btn> }]} />
       </>;
     }}</Cargando>
+  </>;
+}
+/* Cuánto deja cada producto (P-013): precio − costo de la receta, con los costos de hoy de Inventario.
+   Lo que no tiene receta o le falta el costo de un insumo no se inventa: se marca para cargarlo. */
+function GananciaProductos({ g, ir }) {
+  const ESTADO = { sin_receta: "Sin receta", sin_costo: "Falta costo" };
+  return <>
+    <div className="fila sb wrap mt-l">
+      <div><h3 style={{ margin: 0 }}>Cuánto deja cada producto</h3><p className="t3 small" style={{ margin: "3px 0 0" }}>Precio menos el costo de su receta, con los costos de hoy de Inventario. Los extras no entran.</p></div>
+      {ir && g.sin_costo > 0 && puede("inventario") && <Btn ch icono={Boxes} onClick={() => ir("inventario", { tab: "recetas" })}>Cargar recetas</Btn>}
+    </div>
+    {!g.hay_recetas && <div className="mt"><Aviso c="a"><b>Todavía no hay recetas cargadas.</b> Para saber cuánto deja cada producto, cargá en Inventario el costo de cada insumo y la receta de cada producto (qué lleva y cuánto).</Aviso></div>}
+    <div className="grilla g3 mt">
+      <Kpi destacado c="g" icono={Coins} label="Ganancia de lo vendido" valor={plata(g.ganancia_cents)} sub="Solo productos con receta y costo" />
+      <Kpi c="v" icono={Percent} label="Margen promedio" valor={g.margen == null ? "—" : `${g.margen}%`} sub="Ganancia sobre lo cobrado" />
+      <Kpi c={g.sin_costo ? "a" : "g"} icono={AlertTriangle} label="Sin receta o sin costo" valor={String(g.sin_costo)} sub={g.sin_costo ? "No se cuentan en la ganancia" : "Todos tienen costo"} />
+    </div>
+    <div className="mt"><Tabla filas={g.filas} claveFila={(f) => (f.promo ? "p-" : "") + f.nombre} vacio="Todavía no hay productos" columnas={[
+      { t: "Producto", v: (f) => <>{f.nombre} {f.promo && <Tag c="p">promo</Tag>}</> },
+      { t: "Precio", der: true, v: (f) => plata(f.precio_cents) },
+      { t: "Costo", der: true, v: (f) => (f.costo_cents != null ? plata(f.costo_cents) : <Tag c="a" title={f.faltan.length ? `Falta el costo de: ${f.faltan.join(", ")}` : "Cargá la receta en Inventario → Recetas"}>{ESTADO[f.estado]}</Tag>) },
+      { t: "Deja c/u", der: true, v: (f) => (f.deja_cents != null ? <b className={f.deja_cents < 0 ? "mal-t" : ""}>{plata(f.deja_cents)}</b> : "—") },
+      { t: "Margen", der: true, v: (f) => (f.margen != null ? `${f.margen}%` : "—") },
+      { t: "Vendidas", der: true, v: (f) => numero(f.vendidas) },
+      { t: "Ganancia del período", der: true, v: (f) => (f.ganancia_cents != null ? <b className={f.ganancia_cents < 0 ? "mal-t" : "ok-t"}>{plata(f.ganancia_cents)}</b> : "—") },
+    ]} /></div>
   </>;
 }
 export { useRef };

@@ -14,8 +14,8 @@ from ..db import ahora_iso, get_db, respaldo_automatico
 from ..documentos import guardar_reporte, pdf_cierre, ruta_reporte
 from ..dominio import liquidacion as liq
 from ..dominio import stock
-from ..dominio.pedidos import (DatosDelPedidoInvalidos, borrar_contenido, insertar_ajustes, insertar_items,
-                               leer_pedido, money, verificar_total)
+from ..dominio.pedidos import (DatosDelPedidoInvalidos, PagaConInvalido, borrar_contenido, insertar_ajustes,
+                               insertar_items, leer_pedido, money, paga_con, verificar_total)
 from ..ticket import bytes_escpos, contexto, imprimir
 from .util import bandera, cuerpo, error, ok, texto
 
@@ -97,6 +97,7 @@ def api_board():
             "payment_method": r["payment_method"], "medio": liq.nombre_medio(medios, r["payment_method"]),
             "es_efectivo": liq.es_efectivo(medios, r["payment_method"]),
             "notes": r["notes"] or "", "unidades": int(r["unidades"] or 0),
+            "paga_con_cents": r["paga_con_cents"],
             "jornada": r["jornada"], "anterior": (r["jornada"] or hoy) < hoy,
         })
     return ok(hoy=hoy, **out)
@@ -121,6 +122,12 @@ def _validar_basicos(d: Dict[str, Any]) -> Any:
     if not isinstance(items, list) or not items:
         return "El pedido está vacío: agregá al menos un producto."
     return None
+
+
+def _paga_con(conn: sqlite3.Connection, d: Dict[str, Any], total: int) -> Any:
+    """Con cuánto paga en efectivo (para el vuelto de la factura). Solo si el medio es efectivo."""
+    medio = _medio_valido(conn, d.get("payment_method"))
+    return paga_con(d.get("paga_con_cents"), total, liq.es_efectivo(liq.medios_de_pago(conn), medio))
 
 
 def _courier(conn: sqlite3.Connection, raw: Any) -> Any:
@@ -153,12 +160,16 @@ def api_crear_pedido():
         total = insertar_items(conn, cur, oid, d.get("items"))
         total += insertar_ajustes(cur, oid, d.get("adjustments") or [])
         verificar_total(total, d.get("client_total_cents"))
-        cur.execute("UPDATE orders SET total_cents=? WHERE id=?;", (total, oid))
+        cur.execute("UPDATE orders SET total_cents=?, paga_con_cents=? WHERE id=?;",
+                    (total, _paga_con(conn, d, total), oid))
         conn.commit()
         return ok(id=oid, total_cents=total)
     except DatosDelPedidoInvalidos as e:
         conn.rollback()
         return error(str(e), 409, stale=True)
+    except PagaConInvalido as e:
+        conn.rollback()
+        return error(str(e))
     except sqlite3.Error as e:
         conn.rollback()
         return error(f"No se pudo guardar el pedido (base de datos: {e}).", 500)
@@ -207,7 +218,8 @@ def api_editar_pedido(order_id: int):
         total = insertar_items(conn, cur, order_id, d.get("items"))
         total += insertar_ajustes(cur, order_id, d.get("adjustments") or [])
         verificar_total(total, d.get("client_total_cents"))
-        cur.execute("UPDATE orders SET total_cents=? WHERE id=?;", (total, order_id))
+        cur.execute("UPDATE orders SET total_cents=?, paga_con_cents=? WHERE id=?;",
+                    (total, _paga_con(conn, d, total), order_id))
         if total != int(fila["total_cents"] or 0):
             auth.auditar(conn, "Pedido editado",
                          f"#{order_id} {fila['address']}: ${money(fila['total_cents'])} → ${money(total)}")
@@ -216,6 +228,9 @@ def api_editar_pedido(order_id: int):
     except DatosDelPedidoInvalidos as e:
         conn.rollback()
         return error(str(e), 409, stale=True)
+    except PagaConInvalido as e:
+        conn.rollback()
+        return error(str(e))
     except sqlite3.Error as e:
         conn.rollback()
         return error(f"No se pudo guardar el pedido (base de datos: {e}).", 500)

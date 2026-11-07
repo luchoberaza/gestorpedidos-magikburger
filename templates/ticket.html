@@ -175,6 +175,8 @@
       font-weight: 900;
       font-size: 16px;
     }
+    .vuelto{ display:flex; justify-content:space-between; gap:12px; margin-top:4px; font-weight:700; font-size:13px; }
+    .vuelto.fuerte{ font-weight:900; font-size:14px; }
     .note{
       text-align:center;
       margin-top: 8px;
@@ -275,7 +277,7 @@
         font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
       }
       .ticket, .ticket *{ color:#000 !important; }
-      .magik, .it-name, .it-qty, .it-price, .comp-name, .total,
+      .magik, .it-name, .it-qty, .it-price, .comp-name, .total, .vuelto,
       .adj-row, .mod-tag, .pay, .note, .mod-row b, .meta b{
         font-weight: 700 !important;
       }
@@ -429,6 +431,10 @@
             <span>{{ negocio.simbolo }} {{ (order.total_cents // 100) }}</span>
           {% endif %}
         </div>
+        {% if order.paga_con_cents %}
+          <div class="vuelto"><span>Paga con</span><span>{{ negocio.simbolo }} {{ (order.paga_con_cents // 100) }}</span></div>
+          <div class="vuelto fuerte"><span>Vuelto</span><span>{{ negocio.simbolo }} {{ (order.vuelto_cents // 100) }}</span></div>
+        {% endif %}
 
         {% if negocio.pie %}<div class="note">{{ negocio.pie }}</div>{% endif %}
 

@@ -15,8 +15,31 @@ class DatosDelPedidoInvalidos(Exception):
     """Lo que manda la pantalla no coincide con el catálogo: no se guarda a medias."""
 
 
+class PagaConInvalido(Exception):
+    """El monto con el que dice pagar el cliente no cubre el pedido."""
+
+
 def money(cents: Any) -> int:
     return int(round((int(cents or 0)) / 100))
+
+
+def paga_con(valor: Any, total_cents: int, es_efectivo: bool) -> Optional[int]:
+    """Con cuánto paga el cliente en efectivo (en centavos), para que el repartidor lleve el vuelto.
+
+    Vacío, o un medio que no es efectivo → None (no hay vuelto que llevar). Si no alcanza para
+    el total, no se guarda: el cajero corrige el monto o lo deja vacío."""
+    if not es_efectivo or valor is None or (isinstance(valor, str) and not valor.strip()):
+        return None
+    try:
+        cents = int(valor)
+    except (TypeError, ValueError):
+        cents = pesos_a_centavos(valor, -1)
+    if cents <= 0:
+        return None
+    if cents < int(total_cents):
+        raise PagaConInvalido(f"Paga con ${money(cents)} y el pedido es de ${money(total_cents)}: no alcanza. "
+                              f"Corregí el monto o dejalo vacío.")
+    return cents
 
 
 def pesos_a_centavos(valor: Any, defecto: int = 0, negativo: bool = False) -> int:
@@ -255,6 +278,7 @@ def leer_pedido(conn: sqlite3.Connection, order_id: int) -> Optional[Dict[str, A
             "created_at": o["created_at"], "total_cents": int(o["total_cents"] or 0),
             "cierre_id": o["cierre_id"] if "cierre_id" in o.keys() else None,
             "courier_name": o["courier_name"],
+            "paga_con_cents": o["paga_con_cents"] if "paga_con_cents" in o.keys() else None,
         },
         "items": [{
             "id": int(it["id"]),

@@ -74,6 +74,7 @@ function TarjetaPedido({ o, onEstado, onEditar, onEliminar }) {
         <div className="monto">{plata(o.total_cents)}</div>
       </div>
       <div className="meta"><span><Phone />{o.phone}</span><span><Bike />{o.courier_name || "Sin asignar"}</span><span><Clock />{hora(o.created_at)} · {hace(o.created_at)}</span><span>{o.unidades} u.</span></div>
+      {o.paga_con_cents > 0 && o.es_efectivo && <div className="meta"><span><Banknote />Paga con {plata(o.paga_con_cents)} · <b className="ok-t">vuelto {plata(o.paga_con_cents - o.total_cents)}</b></span></div>}
       {o.notes && <div className="nota">📝 {o.notes}</div>}
       <div className="estados">
         {ESTADOS.map((s) => <button key={s} type="button" className={o.status === s ? "on" : ""} onClick={() => o.status !== s && onEstado(s)}>

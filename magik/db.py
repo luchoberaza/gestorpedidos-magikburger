@@ -416,7 +416,12 @@ def _m2_unificacion(conn: sqlite3.Connection) -> None:
         )
 
 
-MIGRACIONES: List[Callable[[sqlite3.Connection], None]] = [_m1_base, _m2_unificacion]
+def _m3_paga_con(conn: sqlite3.Connection) -> None:
+    """P-014: con cuánto paga el cliente en efectivo, para imprimir el vuelto. Solo agrega una columna."""
+    _agregar_columna(conn, "orders", "paga_con_cents INTEGER")
+
+
+MIGRACIONES: List[Callable[[sqlite3.Connection], None]] = [_m1_base, _m2_unificacion, _m3_paga_con]
 VERSION_ACTUAL = len(MIGRACIONES)
 
 
