@@ -733,13 +733,20 @@ class TestPagaCon(Base):
         tablero = self.c.get("/api/board").get_json()
         self.assertEqual(next(o for o in tablero["new"] if o["id"] == oid)["paga_con_cents"], 50000)
 
+    def _pedidos(self):
+        conn = self.db()
+        try:
+            return conn.execute("SELECT COUNT(*) FROM orders;").fetchone()[0]
+        finally:
+            conn.close()
+
     def test_si_no_alcanza_no_se_guarda_y_explica_por_que(self):
-        antes = self.db().execute("SELECT COUNT(*) FROM orders;").fetchone()[0]
+        antes = self._pedidos()
         r = self.pedido_api(paga_con_cents=20000, client_total_cents=30000)
         self.assertEqual(r.status_code, 400)
         self.assertIn("no alcanza", r.get_json()["error"])
         self.assertFalse(r.get_json().get("stale"))  # no es "cambiaron los precios"
-        self.assertEqual(self.db().execute("SELECT COUNT(*) FROM orders;").fetchone()[0], antes)
+        self.assertEqual(self._pedidos(), antes)
 
     def test_transferencia_y_pedido_sin_dato_no_imprimen_vuelto(self):
         from magik.ticket import bytes_escpos_texto, contexto
