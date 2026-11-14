@@ -336,12 +336,19 @@ def pdf_reporte(conn: Any, tipo: str, desde: str, hasta: str) -> bytes:
                    for d in dias], [32 * mm, 22 * mm, None, None, None],
                   ["Total", r["pedidos_count"], m(r["ventas_cents"]), m(r["gastos_cents"]), m(r["balance_cents"])])]
     if tipo in ("ventas", "completo"):
+        ranking = finanzas.ranking_productos(conn, desde, hasta, 0)
         story += [Paragraph("Productos más vendidos", s_h),
                   tabla(["#", "Producto", "Unidades", "Total"],
                         [[i + 1, p["nombre"], p["unidades"], m(p["total_cents"])]
-                         for i, p in enumerate(finanzas.ranking_productos(conn, desde, hasta, 25))],
-                        [10 * mm, None, 24 * mm, 32 * mm]),
-                  Paragraph("Ventas por medio de pago", s_h),
+                         for i, p in enumerate([x for x in ranking if not x["promo"]][:25])],
+                        [10 * mm, None, 24 * mm, 32 * mm])]
+        promos = [x for x in ranking if x["promo"]]
+        if promos:  # P-017: las promos, aparte
+            story += [Paragraph("Promos más vendidas", s_h),
+                      tabla(["#", "Promo", "Vendidas", "Total"],
+                            [[i + 1, p["nombre"], p["unidades"], m(p["total_cents"])] for i, p in enumerate(promos[:25])],
+                            [10 * mm, None, 24 * mm, 32 * mm])]
+        story += [Paragraph("Ventas por medio de pago", s_h),
                   tabla(["Medio", "Total"], [[x["medio"], m(x["total_cents"])] for x in r["ventas_por_medio"]],
                         [None, 40 * mm])]
         manuales = finanzas.ventas_manuales(conn, desde, hasta)
@@ -527,10 +534,12 @@ def hojas_reporte(conn: Any, tipo: str, desde: str, hasta: str) -> List[Dict[str
             "filas": [[_fecha(v["fecha"]), v["hora"], v["concepto"], _num(v["cantidad"]), v["precio_unit_cents"],
                        v["total_cents"], v["metodo_pago"], v["observaciones"]] for v in man],
             "total": ["TOTAL", "", "", "", "", sum(int(v["total_cents"]) for v in man), "", ""]})
+        ranking = finanzas.ranking_productos(conn, desde, hasta, 0)
         hojas.append({"nombre": "Productos", "columnas": [("Producto", "texto"), ("Unidades", "numero"),
                                                           ("Total", "moneda")],
-                      "filas": [[p["nombre"], p["unidades"], p["total_cents"]]
-                                for p in finanzas.ranking_productos(conn, desde, hasta, 0)]})
+                      "filas": [[p["nombre"], p["unidades"], p["total_cents"]] for p in ranking if not p["promo"]]})
+        hojas.append({"nombre": "Promos", "columnas": [("Promo", "texto"), ("Vendidas", "numero"), ("Total", "moneda")],
+                      "filas": [[p["nombre"], p["unidades"], p["total_cents"]] for p in ranking if p["promo"]]})
         gp = costos.ganancia_por_producto(conn, desde, hasta)
         estado = {"sin_receta": "Sin receta", "sin_costo": "Falta el costo de un insumo"}
         hojas.append({"nombre": "Ganancia por producto", "columnas": [

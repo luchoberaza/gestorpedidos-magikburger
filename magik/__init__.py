@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from flask import Flask, jsonify, redirect, render_template, request
 
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 
 
 def create_app() -> Flask:

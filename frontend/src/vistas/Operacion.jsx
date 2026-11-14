@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, Banknote, Bike, Clock, FileDown, Lock, Pencil, Phone, Plus, Printer, Search, Trash2, TrendingUp, Wallet, ArrowLeftRight } from "lucide-react";
 import { bus, del, descargar, fecha, fechaHora, get, hace, hora, imprimirTicket, intentar, plata, post, puede, toast } from "../lib";
-import { Aviso, Btn, Cargando, Kpi, Seg, Tabla, Tag, Vacio, confirmar, resorte, useCarga } from "../ui";
+import { Aviso, Btn, Cargando, Kpi, Modal, Seg, Tabla, Tabs, Tag, Vacio, abrir, confirmar, resorte, useCarga } from "../ui";
 import { editarPedido } from "./Pos";
 
 const ETQ = { new: "Nuevo", kitchen: "Cocina", way: "En camino", done: "Entregado" };
@@ -119,8 +119,8 @@ function VistaLiquidacion({ l, cierres, recargar }) {
         {puede("cierre") && <Btn v="prim" icono={Lock} disabled={!l.abiertos_total} onClick={cerrar}>Cerrar jornada</Btn>}
       </Encabezado>
       <div className="grilla g4">
-        <Kpi destacado grande c="p" icono={Wallet} label="Efectivo a rendir" valor={plata(l.cash_to_render_cents)} sub="Lo que tiene que entrar a la caja" />
-        <Kpi c="v" icono={TrendingUp} label="Facturado" valor={plata(l.total_cents)} sub={`${l.orders_count} pedido(s) · ${l.delivered_count} entregado(s)`} />
+        <Kpi destacado grande c="p" icono={Wallet} label="Efectivo a rendir" valor={plata(l.cash_to_render_cents)} sub="Lo que tiene que entrar a la caja" onClick={() => verDesglose("rendir")} />
+        <Kpi c="v" icono={TrendingUp} label="Facturado" valor={plata(l.total_cents)} sub={`${l.orders_count} pedido(s) · ${l.delivered_count} entregado(s)`} onClick={() => verDesglose("facturado")} />
         <Kpi c="b" icono={ArrowLeftRight} label="Otros medios" valor={plata(l.transfer_cents)} sub="Transferencias y similares: no se rinden" />
         <Kpi c="g" icono={Bike} label="Envíos" valor={plata(l.delivery_total_cents)} sub="Quedan para los repartidores" />
       </div>
@@ -146,6 +146,77 @@ function VistaLiquidacion({ l, cierres, recargar }) {
           { t: "", min: true, v: (x) => <Btn ch icono={FileDown} onClick={() => descargar(`/api/cierres/${x.id}/pdf`)}>PDF</Btn> }]} />
     </>
   );
+}
+
+/* ---------------- Desglose de la liquidación (P-018) ----------------
+   "Poder desglosar total del efectivo a rendir y lo facturado para asegurar que funcione […] que abra un modal
+   de detalle de donde viene toda ese dinero". El detalle sale de la misma cuenta que las tarjetas. */
+async function verDesglose(inicial) {
+  const d = await intentar(() => get("/api/liquidation/detalle"), "No se pudo abrir el detalle");
+  if (!d) return;
+  await abrir(function Desglose({ cerrar, arriba }) {
+    const [tab, setTab] = useState(inicial);
+    return <Modal titulo={`De dónde sale la plata · jornada del ${fecha(d.jornada)}`} tam="gr" onClose={() => cerrar()} arriba={arriba}>
+      <Tabs valor={tab} onChange={setTab} tabs={[["rendir", "Efectivo a rendir"], ["facturado", "Facturado"]]} />
+      <div className="mt">{tab === "rendir" ? <DesgloseRendir d={d} /> : <DesgloseFacturado d={d} />}</div>
+    </Modal>;
+  });
+}
+
+const colPedido = [{ t: "N°", v: (p) => <b>#{p.id}</b> }, { t: "Hora", v: (p) => hora(p.created_at) }, { t: "Dirección", v: (p) => <span className="trunc">{p.address}</span> }];
+
+function DesgloseRendir({ d }) {
+  const rinden = d.pedidos.filter((p) => p.cuenta === "rinde");
+  const afuera = d.pedidos.filter((p) => p.cuenta !== "rinde");
+  const reps = d.couriers.filter((c) => c.to_render_cents || rinden.some((p) => p.courier_id === c.courier_id));
+  return <>
+    <div className="desglose-cuenta">
+      <span>Cobrado en efectivo <b>{plata(d.cash_collected_cents)}</b></span>
+      <span className="op">−</span><span>Envíos <b>{plata(d.delivery_cash_cents)}</b></span>
+      <span className="op">+</span><span>Cambio <b>{plata(d.cash_float_total_cents)}</b></span>
+      <span className="op">=</span><span className="igual">A rendir <b className="grad-t">{plata(d.cash_to_render_cents)}</b></span>
+    </div>
+    <p className="t3 small">Solo cuentan los pedidos <b>entregados</b> y pagados en <b>efectivo</b>. El envío se lo queda el repartidor y el cambio que se llevó vuelve a la caja.</p>
+    {reps.length ? reps.map((c) => {
+      const suyos = rinden.filter((p) => p.courier_id === c.courier_id);
+      return <div key={c.courier_name} className="desglose-rep">
+        <h4><span>{c.courier_name}</span><span>A rendir {plata(c.to_render_cents)}</span></h4>
+        <Tabla filas={suyos} claveFila={(p) => p.id} vacio="No entregó pedidos en efectivo"
+          pie={["", "", `${suyos.length} pedido(s)`, plata(c.cash_collected_cents), c.delivery_cents ? "− " + plata(c.delivery_cents) : "—", plata(c.cash_collected_cents - c.delivery_cents)]}
+          columnas={[...colPedido, { t: "Cobró", der: true, v: (p) => plata(p.total_cents) }, { t: "Envío", der: true, v: (p) => (p.envio_cents ? "− " + plata(p.envio_cents) : "—") }, { t: "Rinde", der: true, v: (p) => <b>{plata(p.rinde_cents)}</b> }]} />
+        {c.cash_float_cents > 0 && <div className="fila sb small t2 mt-s"><span>+ Cambio que se llevó (vuelve a la caja)</span><b>{plata(c.cash_float_cents)}</b></div>}
+      </div>;
+    }) : <Vacio titulo="Todavía no hay efectivo para rendir" />}
+    {afuera.length > 0 && <div className="desglose-rep">
+      <h4><span>No entran en el efectivo a rendir</span><span>{afuera.length} pedido(s)</span></h4>
+      <Tabla filas={afuera} claveFila={(p) => p.id} columnas={[...colPedido, { t: "Repartidor", k: "courier_name" },
+        { t: "Por qué", v: (p) => (p.cuenta === "sin_entregar" ? <Tag c="a">Sin entregar · {p.status_label}</Tag> : <Tag c="b">{p.medio}: ya entró a la cuenta</Tag>) },
+        { t: "Total", der: true, v: (p) => plata(p.total_cents) }]} />
+    </div>}
+  </>;
+}
+
+function DesgloseFacturado({ d }) {
+  const suma = (f) => d.pedidos.filter(f).reduce((a, p) => a + p.total_cents, 0);
+  const medios = [...new Set(d.pedidos.map((p) => p.medio))];
+  const entregados = suma((p) => p.status === "done");
+  const envios = d.pedidos.reduce((a, p) => a + p.envio_cents, 0);
+  return <>
+    <div className="desglose-cuenta">
+      {medios.map((m, i) => <span key={m}>{i > 0 && <span className="op">+ </span>}{m} <b>{plata(suma((p) => p.medio === m))}</b></span>)}
+      <span className="op">=</span><span className="igual">Facturado <b className="grad-t">{plata(d.facturado_cents)}</b></span>
+    </div>
+    <div className="desglose-cuenta mt-s">
+      <span>Entregados <b>{plata(entregados)}</b></span><span className="op">+</span><span>Sin entregar <b>{plata(d.facturado_cents - entregados)}</b></span>
+      {envios > 0 && <span className="t3 small">· incluye {plata(envios)} de envíos (son de los repartidores)</span>}
+    </div>
+    <p className="t3 small">Todos los pedidos abiertos de la jornada, con cualquier medio de pago y en cualquier estado.</p>
+    <Tabla filas={d.pedidos} claveFila={(p) => p.id} vacio="Todavía no hay pedidos en esta jornada"
+      pie={["", "", `${d.pedidos.length} pedido(s)`, "", "", "", plata(d.facturado_cents)]}
+      columnas={[...colPedido, { t: "Repartidor", k: "courier_name" }, { t: "Pago", v: (p) => <Tag c={p.es_efectivo ? "g" : "b"}>{p.medio}</Tag> },
+        { t: "Estado", v: (p) => (p.status === "done" ? <Tag c="g">Entregado</Tag> : <Tag c="a">{p.status_label}</Tag>) },
+        { t: "Total", der: true, v: (p) => <><b>{plata(p.total_cents)}</b>{p.envio_cents > 0 && <div className="small t3">envío {plata(p.envio_cents)}</div>}</> }]} />
+  </>;
 }
 
 export { del };

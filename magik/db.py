@@ -421,7 +421,14 @@ def _m3_paga_con(conn: sqlite3.Connection) -> None:
     _agregar_columna(conn, "orders", "paga_con_cents INTEGER")
 
 
-MIGRACIONES: List[Callable[[sqlite3.Connection], None]] = [_m1_base, _m2_unificacion, _m3_paga_con]
+def _m4_peso_hamburguesa(conn: sqlite3.Connection) -> None:
+    """P-016: la carne se compra por kg y se cuenta por hamburguesas de 120 g. Cada materia prima
+    puede tener el peso de su hamburguesa (0 = se cuenta en gramos). Solo agrega una columna."""
+    _agregar_columna(conn, "insumos", "porcion_g REAL NOT NULL DEFAULT 0")
+
+
+MIGRACIONES: List[Callable[[sqlite3.Connection], None]] = [_m1_base, _m2_unificacion, _m3_paga_con,
+                                                           _m4_peso_hamburguesa]
 VERSION_ACTUAL = len(MIGRACIONES)
 
 

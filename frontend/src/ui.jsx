@@ -22,10 +22,11 @@ export function Vidrio({ titulo, extra, children, pad, className = "", cuerpo = 
     </div>
   );
 }
-export function Kpi({ label, valor, sub, icono: I, c, grande, destacado, delta }) {
+export function Kpi({ label, valor, sub, icono: I, c, grande, destacado, delta, onClick, pista }) {
+  const clic = onClick ? { role: "button", tabIndex: 0, onClick, onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }, title: pista || "Ver el detalle" } : {};
   return (
-    <motion.div className={`kpi ${c || ""} ${grande ? "grande" : ""} ${destacado ? "destacado" : ""}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .25 }}>
-      <div className="k-l">{I && <span className="k-i"><I /></span>}{label}{delta}</div>
+    <motion.div className={`kpi ${c || ""} ${grande ? "grande" : ""} ${destacado ? "destacado" : ""} ${onClick ? "clic" : ""}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .25 }} {...clic}>
+      <div className="k-l">{I && <span className="k-i"><I /></span>}{label}{delta}{onClick && <span className="k-ver">{pista || "Ver detalle"}</span>}</div>
       <div className="k-v"><ValorAnimado valor={valor} /></div>
       {sub && <div className="k-s">{sub}</div>}
     </motion.div>

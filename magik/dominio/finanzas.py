@@ -72,13 +72,13 @@ def ranking_productos(conn: sqlite3.Connection, desde: Optional[str], hasta: Opt
         f" WHERE m.order_item_id = i.id AND m.kind = 'add') AS extras "
         f"FROM order_items i JOIN orders o ON o.id = i.order_id WHERE {j} BETWEEN ? AND ?;",
         (r["desde"], r["hasta"])).fetchall()
-    acum: Dict[str, Dict[str, Any]] = {}
+    acum: Dict[Any, Dict[str, Any]] = {}
     promos_vistas = set()
     for f in filas:
         qty = int(f["qty"] or 1)
         if f["promo_group"]:
-            nombre = "Promo · " + (f["promo_name_snapshot"] or "Promo")
-            d = acum.setdefault(nombre, {"nombre": nombre, "unidades": 0, "total_cents": 0, "promo": True})
+            nombre = f["promo_name_snapshot"] or "Promo"
+            d = acum.setdefault(("promo", nombre), {"nombre": nombre, "unidades": 0, "total_cents": 0, "promo": True})
             clave = (f["order_id"], f["promo_group"])
             if clave not in promos_vistas:
                 promos_vistas.add(clave)
@@ -86,14 +86,14 @@ def ranking_productos(conn: sqlite3.Connection, desde: Optional[str], hasta: Opt
             d["total_cents"] += int(f["promo_price_cents"] or 0) + int(f["extras"] or 0) * qty
         else:
             nombre = f["nombre"] or "Producto"
-            d = acum.setdefault(nombre, {"nombre": nombre, "unidades": 0, "total_cents": 0, "promo": False})
+            d = acum.setdefault(("producto", nombre), {"nombre": nombre, "unidades": 0, "total_cents": 0, "promo": False})
             d["unidades"] += qty
             d["total_cents"] += (int(f["base"] or 0) + int(f["extras"] or 0)) * qty
     # Ventas manuales también suman al ranking por su concepto.
     for v in conn.execute("SELECT concepto, cantidad, total_cents FROM ventas_manuales WHERE fecha BETWEEN ? AND ?;",
                           (r["desde"], r["hasta"])).fetchall():
         nombre = (v["concepto"] or "Venta manual").strip()
-        d = acum.setdefault(nombre, {"nombre": nombre, "unidades": 0, "total_cents": 0, "promo": False})
+        d = acum.setdefault(("producto", nombre), {"nombre": nombre, "unidades": 0, "total_cents": 0, "promo": False})
         d["unidades"] += float(v["cantidad"] or 0)
         d["total_cents"] += int(v["total_cents"] or 0)
     lista = sorted(acum.values(), key=lambda d: (-d["total_cents"], -d["unidades"], d["nombre"]))
@@ -180,6 +180,7 @@ def resumen(conn: sqlite3.Connection, desde: str, hasta: str, detalle: bool = Tr
         por_hora[h] = por_hora.get(h, 0) + 1
 
     dias = _dias(desde, hasta) if desde > "0000-01-01" and hasta < "9999-12-31" else sorted(por_dia)
+    ranking = ranking_productos(conn, desde, hasta, 0)
     out.update({
         "serie_dias": [{"dia": d, **por_dia.get(d, {"ventas": 0, "gastos": 0, "pedidos": 0})} for d in dias],
         "gastos_por_categoria": sorted(({"categoria": k, "total_cents": v} for k, v in por_cat.items()),
@@ -188,7 +189,10 @@ def resumen(conn: sqlite3.Connection, desde: str, hasta: str, detalle: bool = Tr
                                    key=lambda x: -x["total_cents"]),
         "por_repartidor": sorted(({"nombre": k, **v} for k, v in por_rep.items()), key=lambda x: -x["pedidos"]),
         "pedidos_por_hora": [{"hora": h, "pedidos": por_hora.get(h, 0)} for h in range(24)],
-        "top_productos": ranking_productos(conn, desde, hasta, 10),
+        # P-017: las promos van en su propia tarjeta ("Promos en las estadisticas de venta que aparezcan
+        # en un card aparte"), así que salen en una lista aparte y no compiten con los productos.
+        "top_productos": [x for x in ranking if not x["promo"]][:10],
+        "top_promos": [x for x in ranking if x["promo"]][:10],
     })
     return out
 

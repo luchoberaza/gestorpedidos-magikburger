@@ -1,15 +1,18 @@
-"""Inventario: insumos, movimientos de stock y recetas."""
+"""Inventario: insumos, movimientos de stock, recetas y la planilla de costos."""
 from __future__ import annotations
 
+import io
 import sqlite3
+from datetime import datetime
 from typing import Any, Dict
 
-from flask import Blueprint, request
+from flask import Blueprint, request, send_file
 
-from .. import auth
-from ..db import ahora_iso, get_db
+from .. import auth, config, planilla
+from ..db import ahora_iso, get_db, respaldo_automatico
 from ..dominio import liquidacion as liq
 from ..dominio import stock
+from ..dominio.unidades import a_compra, a_receta, admite_hamburguesa, singular, unidad_receta
 from .util import bandera, cuerpo, error, numero, ok, pesos, texto
 
 bp = Blueprint("inventario", __name__)
@@ -24,6 +27,10 @@ def _insumos(conn: sqlite3.Connection) -> list:
         x["disponible"] = round(float(i["stock"] or 0) - x["comprometido"], 3)
         x["bajo"] = bool(float(i["stock_minimo"] or 0) > 0 and x["disponible"] <= float(i["stock_minimo"] or 0))
         x["valor_cents"] = int(round(max(0.0, float(i["stock"] or 0)) * int(i["costo_unit_cents"] or 0)))
+        en = unidad_receta(i["unidad"], i["porcion_g"])
+        x["receta_unidad"], x["receta_unidad_1"], x["receta_factor"] = en["plural"], en["singular"], en["factor"]
+        x["unidad_1"] = singular(i["unidad"]) if i["unidad"] not in ("kg", "g", "l", "ml") else i["unidad"]
+        x["hamburguesas"] = (int(max(0.0, x["disponible"]) / en["factor"] + 1e-9) if en["hamburguesa"] else None)
         out.append(x)
     return out
 
@@ -44,8 +51,13 @@ def _datos(d: Dict[str, Any]) -> Any:
     minimo = numero(d, "stock_minimo", 0.0)
     if minimo < 0:
         return None, "El stock mínimo no puede ser negativo."
-    return {"nombre": nombre, "categoria": texto(d, "categoria", 40), "unidad": texto(d, "unidad", 20) or "unidades",
+    unidad = texto(d, "unidad", 20) or "unidades"
+    porcion = numero(d, "porcion_g", 0.0)
+    if porcion < 0:
+        return None, "El peso de la hamburguesa no puede ser negativo."
+    return {"nombre": nombre, "categoria": texto(d, "categoria", 40), "unidad": unidad,
             "stock_minimo": minimo, "costo_unit_cents": pesos(d, "costo_unit"),
+            "porcion_g": porcion if admite_hamburguesa(unidad) else 0.0,
             "activo": 0 if not bandera(d, "activo", True) else 1}, None
 
 
@@ -59,9 +71,10 @@ def api_insumo_nuevo():
     conn = get_db()
     try:
         cur = conn.execute(
-            "INSERT INTO insumos(nombre, categoria, unidad, stock, stock_minimo, costo_unit_cents, activo) "
-            "VALUES(?,?,?,0,?,?,?);",
-            (x["nombre"], x["categoria"], x["unidad"], x["stock_minimo"], x["costo_unit_cents"], x["activo"]))
+            "INSERT INTO insumos(nombre, categoria, unidad, stock, stock_minimo, costo_unit_cents, activo, porcion_g) "
+            "VALUES(?,?,?,0,?,?,?,?);",
+            (x["nombre"], x["categoria"], x["unidad"], x["stock_minimo"], x["costo_unit_cents"], x["activo"],
+             x["porcion_g"]))
     except sqlite3.IntegrityError:
         return error(f"Ya existe un insumo llamado «{x['nombre']}».", 409)
     iid = int(cur.lastrowid)
@@ -79,14 +92,37 @@ def api_insumo_editar(iid: int):
     if err:
         return error(err)
     conn = get_db()
+    antes = conn.execute("SELECT * FROM insumos WHERE id=?;", (iid,)).fetchone()
+    if antes is None:
+        return error("Ese insumo ya no existe.", 404)
+    # De kg a g (o de l a ml): el stock, las recetas y los extras pasan a la unidad nueva, así no cambia lo
+    # que hay. El costo y el mínimo, solo si no los tocaron en el formulario (si los tocaron, manda lo escrito).
+    costo_igual = x["costo_unit_cents"] == int(antes["costo_unit_cents"] or 0)
+    minimo_igual = x["stock_minimo"] == float(antes["stock_minimo"] or 0)
+    f = stock.convertir_unidad(conn, iid, antes["unidad"], x["unidad"], costo=costo_igual)
+    if f not in (None, 1.0):
+        fila = conn.execute("SELECT costo_unit_cents, stock_minimo FROM insumos WHERE id=?;", (iid,)).fetchone()
+        if costo_igual:
+            x["costo_unit_cents"] = int(fila["costo_unit_cents"])
+        if minimo_igual:
+            x["stock_minimo"] = float(fila["stock_minimo"])
+    # Si cambia el peso de la hamburguesa, cada receta sigue llevando las mismas hamburguesas.
+    viejo = float(antes["porcion_g"] or 0)
+    if viejo > 0 and x["porcion_g"] > 0 and viejo != x["porcion_g"]:
+        k = x["porcion_g"] / viejo
+        conn.execute("UPDATE recetas SET cantidad=ROUND(cantidad*?, 6) WHERE insumo_id=?;", (k, iid))
+        conn.execute("UPDATE ingrediente_insumo SET cantidad=ROUND(cantidad*?, 6) WHERE insumo_id=?;", (k, iid))
     try:
-        n = conn.execute(
-            "UPDATE insumos SET nombre=?, categoria=?, unidad=?, stock_minimo=?, costo_unit_cents=?, activo=? WHERE id=?;",
-            (x["nombre"], x["categoria"], x["unidad"], x["stock_minimo"], x["costo_unit_cents"], x["activo"], iid)).rowcount
+        conn.execute(
+            "UPDATE insumos SET nombre=?, categoria=?, unidad=?, stock_minimo=?, costo_unit_cents=?, activo=?, "
+            "porcion_g=? WHERE id=?;",
+            (x["nombre"], x["categoria"], x["unidad"], x["stock_minimo"], x["costo_unit_cents"], x["activo"],
+             x["porcion_g"], iid))
     except sqlite3.IntegrityError:
+        conn.rollback()
         return error(f"Ya existe otro insumo llamado «{x['nombre']}».", 409)
     conn.commit()
-    return ok() if n else error("Ese insumo ya no existe.", 404)
+    return ok()
 
 
 @bp.delete("/api/insumos/<int:iid>")
@@ -179,13 +215,21 @@ def api_movimientos():
 def api_recetas():
     conn = get_db()
     rec: Dict[int, list] = {}
-    for r in conn.execute("SELECT r.*, i.nombre, i.unidad FROM recetas r JOIN insumos i ON i.id=r.insumo_id "
-                          "ORDER BY i.nombre;").fetchall():
+    for r in conn.execute("SELECT r.*, i.nombre, i.unidad, i.porcion_g FROM recetas r JOIN insumos i "
+                          "ON i.id=r.insumo_id ORDER BY i.nombre;").fetchall():
         rec.setdefault(int(r["product_id"]), []).append(
             {"insumo_id": int(r["insumo_id"]), "cantidad": float(r["cantidad"]), "nombre": r["nombre"],
-             "unidad": r["unidad"]})
-    ligados = {int(r["ingredient_id"]): {"insumo_id": int(r["insumo_id"]), "cantidad": float(r["cantidad"])}
-               for r in conn.execute("SELECT * FROM ingrediente_insumo;").fetchall()}
+             "unidad": r["unidad"], "receta_unidad": unidad_receta(r["unidad"], r["porcion_g"])["plural"],
+             "receta_unidad_1": unidad_receta(r["unidad"], r["porcion_g"])["singular"],
+             "cantidad_receta": a_receta(r["cantidad"], r["unidad"], r["porcion_g"])})
+    ligados = {}
+    for r in conn.execute("SELECT l.*, i.unidad, i.porcion_g FROM ingrediente_insumo l "
+                          "JOIN insumos i ON i.id=l.insumo_id;").fetchall():
+        ligados[int(r["ingredient_id"])] = {
+            "insumo_id": int(r["insumo_id"]), "cantidad": float(r["cantidad"]),
+            "receta_unidad": unidad_receta(r["unidad"], r["porcion_g"])["plural"],
+            "receta_unidad_1": unidad_receta(r["unidad"], r["porcion_g"])["singular"],
+            "cantidad_receta": a_receta(r["cantidad"], r["unidad"], r["porcion_g"])}
     return ok(
         productos=[{"id": int(p["id"]), "name": p["name"], "active": int(p["active"]), "category": p["category"],
                     "receta": rec.get(int(p["id"]), [])}
@@ -196,11 +240,20 @@ def api_recetas():
     )
 
 
+def _a_compra(conn: sqlite3.Connection, insumo_id: int, cantidad: float, en_receta: bool) -> Any:
+    """Con `en_receta`, la cantidad viene como se escribe en la receta (g, ml, hamburguesas)."""
+    i = conn.execute("SELECT unidad, porcion_g FROM insumos WHERE id=?;", (insumo_id,)).fetchone()
+    if i is None:
+        return None
+    return a_compra(cantidad, i["unidad"], i["porcion_g"]) if en_receta else cantidad
+
+
 @bp.put("/api/recetas/producto/<int:pid>")
 @auth.requiere("inventario")
 def api_receta_guardar(pid: int):
     d = cuerpo()
     lineas = d.get("receta") if isinstance(d.get("receta"), list) else []
+    en_receta = bandera(d, "en_unidad_receta")
     conn = get_db()
     if not conn.execute("SELECT 1 FROM products WHERE id=?;", (pid,)).fetchone():
         return error("Ese producto ya no existe.", 404)
@@ -210,7 +263,8 @@ def api_receta_guardar(pid: int):
             insumo, cant = int(ln.get("insumo_id")), float(str(ln.get("cantidad")).replace(",", "."))
         except (TypeError, ValueError, AttributeError):
             continue
-        if cant > 0 and conn.execute("SELECT 1 FROM insumos WHERE id=?;", (insumo,)).fetchone():
+        cant = _a_compra(conn, insumo, cant, en_receta) if cant > 0 else None
+        if cant:
             conn.execute("INSERT OR REPLACE INTO recetas(product_id, insumo_id, cantidad) VALUES(?,?,?);",
                          (pid, insumo, cant))
     conn.commit()
@@ -220,6 +274,8 @@ def api_receta_guardar(pid: int):
 @bp.put("/api/recetas/ingrediente/<int:ing_id>")
 @auth.requiere("inventario")
 def api_ingrediente_insumo(ing_id: int):
+    """Qué materia prima usa un ingrediente de la caja y cuánto suma como extra. Con cantidad 0 queda
+    ligado solo para el «sin …» (el producto deja de llevar esa materia prima)."""
     d = cuerpo()
     conn = get_db()
     conn.execute("DELETE FROM ingrediente_insumo WHERE ingredient_id=?;", (ing_id,))
@@ -227,8 +283,52 @@ def api_ingrediente_insumo(ing_id: int):
         insumo, cant = int(d.get("insumo_id") or 0), float(str(d.get("cantidad") or 0).replace(",", "."))
     except (TypeError, ValueError):
         insumo, cant = 0, 0.0
-    if insumo and cant > 0:
-        conn.execute("INSERT INTO ingrediente_insumo(ingredient_id, insumo_id, cantidad) VALUES(?,?,?);",
-                     (ing_id, insumo, cant))
+    if insumo and cant >= 0:
+        cant = _a_compra(conn, insumo, cant, bandera(d, "en_unidad_receta"))
+        if cant is not None:
+            conn.execute("INSERT INTO ingrediente_insumo(ingredient_id, insumo_id, cantidad) VALUES(?,?,?);",
+                         (ing_id, insumo, cant))
     conn.commit()
     return ok()
+
+
+# ---------------------------------------------------------------------------
+# Planilla de costos (P-019): Configuración → Cargar archivos
+# ---------------------------------------------------------------------------
+@bp.get("/api/planilla-costos.xlsx")
+@auth.requiere("configuracion")
+def api_planilla_descargar():
+    conn = get_db()
+    cfg = config.todas(conn)
+    datos = planilla.generar(conn, cfg["unidades_stock"], cfg["negocio_nombre"], cfg["moneda_simbolo"])
+    return send_file(io.BytesIO(datos), as_attachment=True,
+                     download_name=f"planilla_de_costos_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@bp.post("/api/planilla-costos")
+@auth.requiere("configuracion")
+def api_planilla_subir():
+    """Revisa la planilla entera; si algo no se entiende no cambia nada y dice en qué fila está."""
+    f = request.files.get("archivo")
+    if f is None or not f.filename:
+        return error("Elegí la planilla (.xlsx) para subir.")
+    conn = get_db()
+    try:
+        hojas = planilla.leer_xlsx(f.read())
+        plan = planilla.revisar(conn, hojas, config.obtener(conn, "unidades_stock"))
+    except planilla.PlanillaInvalida as e:
+        n = len(e.errores)
+        return error(e.errores[0] if n == 1 else f"La planilla tiene {n} cosas para corregir. No se cambió nada.",
+                     errores=e.errores)
+    respaldo_automatico("antes-de-planilla", config.obtener(conn, "respaldos_a_conservar"))
+    try:
+        r = planilla.aplicar(conn, plan)
+        auth.auditar(conn, "Planilla de costos subida",
+                     f"{r['materias_nuevas']} materia(s) prima nueva(s), {r['materias_actualizadas']} actualizada(s), "
+                     f"{r['productos_con_receta']} producto(s) con receta, {r['extras']} extra(s)")
+        conn.commit()
+    except sqlite3.Error as e:
+        conn.rollback()
+        return error(f"No se pudo guardar la planilla (base de datos: {e}). No se cambió nada.", 500)
+    return ok(resultado=r)

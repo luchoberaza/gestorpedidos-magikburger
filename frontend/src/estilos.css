@@ -187,6 +187,17 @@ h1, h2, h3 { font-family: var(--f-disp); text-wrap: balance; }
 .kpi.a .k-i { color: var(--amber); background: var(--amber-soft); }
 .kpi.destacado { background: var(--grad-soft), var(--panel-bg); border-color: color-mix(in srgb, var(--acc) 40%, transparent); }
 .kpi.destacado::after { content: ""; position: absolute; right: -40px; top: -40px; width: 150px; height: 150px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--promo) 30%, transparent), transparent 70%); pointer-events: none; }
+/* Tarjeta que abre su detalle (P-018: efectivo a rendir y facturado) */
+.kpi.clic { cursor: pointer; transition: border-color .15s, transform .15s; }
+.kpi.clic:hover { border-color: color-mix(in srgb, var(--acc) 60%, transparent); transform: translateY(-1px); }
+.kpi.clic:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.kpi .k-ver { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--acc-2); white-space: nowrap; }
+.desglose-cuenta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--s1); border: 1px solid var(--stroke); font-variant-numeric: tabular-nums; }
+.desglose-cuenta .op { color: var(--txt-3); font-weight: 700; }
+.desglose-cuenta b { font-family: var(--f-disp); }
+.desglose-cuenta .igual { font-size: 17px; }
+.desglose-rep { margin-top: 14px; }
+.desglose-rep h4 { margin: 0 0 6px; display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
 .delta { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 99px; margin-left: auto; }
 .delta.up { color: var(--green); background: var(--green-soft); } .delta.down { color: var(--red); background: var(--red-soft); }
 number-flow-react { --number-flow-char-height: 1.1em; }
@@ -303,7 +314,8 @@ select.inp option { background: var(--solid); color: var(--txt); }
 .chip.quita.on { background: linear-gradient(135deg, #e11d48, #f43f5e); color: #fff; }
 .chip svg { width: 15px; height: 15px; }
 
-.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--stroke); overflow-x: auto; }
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--stroke); overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; } /* el subrayado sobresale 1 px y asomaba una barra de desplazamiento */
 .tab { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border: 0; background: none; color: var(--txt-2); font-weight: 700; cursor: pointer; white-space: nowrap; }
 .tab:hover { color: var(--txt); }
 .tab.on { color: var(--txt); }

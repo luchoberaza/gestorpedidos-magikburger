@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .. import config
 from .pedidos import envios_por_pedido
@@ -89,9 +89,13 @@ def _cambio(conn: sqlite3.Connection, courier_id: int) -> int:
 
 
 def calcular(conn: sqlite3.Connection, jornada: Optional[str] = None,
-             cierre_id: Optional[int] = None) -> Dict[str, Any]:
+             cierre_id: Optional[int] = None, detalle: bool = False) -> Dict[str, Any]:
     """Liquidación de los pedidos abiertos de `jornada` (None = todos los abiertos),
-    o de los pedidos de un cierre ya hecho si se pasa `cierre_id`."""
+    o de los pedidos de un cierre ya hecho si se pasa `cierre_id`.
+
+    Con `detalle`, además devuelve cada pedido con cuánto aporta a lo que se rinde (P-018:
+    "desglosar total del efectivo a rendir y lo facturado […] de donde viene toda ese dinero").
+    Sale de la misma cuenta, así el detalle nunca puede sumar distinto que el total."""
     where, params = [], []
     if cierre_id is not None:
         where.append("o.cierre_id = ?")
@@ -102,8 +106,9 @@ def calcular(conn: sqlite3.Connection, jornada: Optional[str] = None,
             where.append(f"{sql_jornada(conn)} = ?")
             params.append(jornada)
     pedidos = conn.execute(
-        "SELECT o.id, o.total_cents, o.courier_id, o.payment_method, o.status, c.name AS courier_name "
-        "FROM orders o LEFT JOIN couriers c ON c.id = o.courier_id WHERE " + " AND ".join(where) + ";",
+        "SELECT o.id, o.total_cents, o.courier_id, o.payment_method, o.status, o.created_at, o.address, "
+        "c.name AS courier_name "
+        "FROM orders o LEFT JOIN couriers c ON c.id = o.courier_id WHERE " + " AND ".join(where) + " ORDER BY o.id;",
         params,
     ).fetchall()
 
@@ -111,6 +116,7 @@ def calcular(conn: sqlite3.Connection, jornada: Optional[str] = None,
     medios = medios_de_pago(conn)
     filas: Dict[Any, Dict[str, Any]] = {}
     por_medio: Dict[str, int] = {}
+    lista: List[Dict[str, Any]] = []
 
     for o in pedidos:
         cid = int(o["courier_id"]) if o["courier_id"] is not None else None
@@ -127,21 +133,33 @@ def calcular(conn: sqlite3.Connection, jornada: Optional[str] = None,
             }
         total = int(o["total_cents"] or 0)
         envio = envios.get(int(o["id"]), 0)
+        estado = (o["status"] or "new").strip().lower()
+        medio = nombre_medio(medios, o["payment_method"])
+        efectivo = es_efectivo(medios, o["payment_method"])
         f["orders_count"] += 1
         f["gross_total_cents"] += total
-        if (o["status"] or "new").strip().lower() not in ENTREGADOS:
+        if estado not in ENTREGADOS:
             f["pending_count"] += 1
             f["pending_cents"] += total
-            continue
-        f["delivered_count"] += 1
-        f["delivery_all_cents"] += envio
-        medio = nombre_medio(medios, o["payment_method"])
-        por_medio[medio] = por_medio.get(medio, 0) + total
-        if es_efectivo(medios, o["payment_method"]):
-            f["cash_cents"] += total
-            f["delivery_cents"] += envio
+            cuenta, rinde = "sin_entregar", 0
         else:
-            f["transfer_cents"] += total
+            f["delivered_count"] += 1
+            f["delivery_all_cents"] += envio
+            por_medio[medio] = por_medio.get(medio, 0) + total
+            if efectivo:
+                f["cash_cents"] += total
+                f["delivery_cents"] += envio
+                cuenta, rinde = "rinde", total - envio
+            else:
+                f["transfer_cents"] += total
+                cuenta, rinde = "otro_medio", 0
+        if detalle:
+            lista.append({
+                "id": int(o["id"]), "created_at": o["created_at"], "address": o["address"] or "",
+                "courier_id": cid, "courier_name": nombre, "medio": medio, "es_efectivo": efectivo,
+                "status": estado, "status_label": ESTADOS_ETIQUETA.get(estado, estado),
+                "total_cents": total, "envio_cents": envio, "cuenta": cuenta, "rinde_cents": rinde,
+            })
 
     for f in filas.values():
         if f["courier_id"] is not None and f["orders_count"] > 0:
@@ -153,7 +171,7 @@ def calcular(conn: sqlite3.Connection, jornada: Optional[str] = None,
     def suma(campo: str) -> int:
         return sum(int(f[campo]) for f in orden)
 
-    return {
+    out = {
         "jornada": jornada,
         "couriers": orden,
         "por_medio": [{"medio": k, "total_cents": v} for k, v in sorted(por_medio.items())],
@@ -170,6 +188,9 @@ def calcular(conn: sqlite3.Connection, jornada: Optional[str] = None,
         # El total es la suma exacta de las filas: no puede discrepar del detalle.
         "cash_to_render_cents": suma("to_render_cents"),
     }
+    if detalle:
+        out["pedidos"] = lista
+    return out
 
 
 def arrastrados(conn: sqlite3.Connection, jornada: str) -> Dict[str, int]:

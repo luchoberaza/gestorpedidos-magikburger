@@ -33,8 +33,9 @@ export function Inicio({ ir }) {
         <Vidrio titulo="Últimos 14 días" extra={<Tag>Ventas vs gastos</Tag>}><Barras etiquetas={d.serie.map((x) => fechaCorta(x.dia))} series={[{ nombre: "Ventas", color: COLORES[0], valores: d.serie.map((x) => x.ventas) }, { nombre: "Gastos", color: COLORES[1], valores: d.serie.map((x) => x.gastos) }]} /></Vidrio>
         <Vidrio titulo="Gastos del mes por categoría"><Dona items={d.gastos_por_categoria.map((x) => ({ etiqueta: x.categoria, valor: x.total_cents }))} vacio="Sin gastos este mes" /></Vidrio>
       </div>
-      <div className="grilla g2 mt">
+      <div className="grilla g3 mt">
         <Vidrio titulo="Lo más vendido del mes" extra={puede("reportes") && <Btn v="fant" ch onClick={() => ir("reportes")}>Ver reportes</Btn>}><Ranking items={d.top_productos.map((p) => ({ etiqueta: p.nombre, valor: p.total_cents, extra: `${numero(p.unidades)} u.` }))} /></Vidrio>
+        <Vidrio titulo="Promos más vendidas del mes"><Ranking items={(d.top_promos || []).map((p) => ({ etiqueta: p.nombre, valor: p.total_cents, extra: `${numero(p.unidades)} vendida(s)` }))} /></Vidrio>
         <Vidrio titulo="Pedidos por hora (mes)">{sel.length ? <Barras alto={210} etiquetas={sel.map((h) => `${h.hora}h`)} series={[{ nombre: "Pedidos", color: COLORES[2], valores: sel.map((h) => h.pedidos) }]} fmt={(v) => `${v} pedido(s)`} eje={(v) => String(Math.round(v))} /> : <Vacio titulo="Sin pedidos este mes" />}</Vidrio>
       </div>
       <div className="grilla g2 mt">
@@ -246,7 +247,10 @@ export function Reportes({ ir }) {
           <Vidrio titulo="Ventas por medio de pago"><Dona items={s.ventas_por_medio.map((x) => ({ etiqueta: x.medio, valor: x.total_cents }))} vacio="Sin ventas en el período" /></Vidrio>
         </div>
         <div className="grilla g2 mt">
-          <div><h3>Productos más vendidos</h3><Tabla filas={s.top_productos} vacio="Sin ventas en el período" columnas={[{ t: "#", v: (_, i) => i + 1 }, { t: "Producto", v: (p) => <>{p.nombre} {p.promo && <Tag c="p">promo</Tag>}</> }, { t: "Unidades", der: true, v: (p) => numero(p.unidades) }, { t: "Total", der: true, v: (p) => <b>{plata(p.total_cents)}</b> }]} /></div>
+          <div><h3>Productos más vendidos</h3><Tabla filas={s.top_productos} vacio="Sin ventas en el período" columnas={[{ t: "#", v: (_, i) => i + 1 }, { t: "Producto", k: "nombre" }, { t: "Unidades", der: true, v: (p) => numero(p.unidades) }, { t: "Total", der: true, v: (p) => <b>{plata(p.total_cents)}</b> }]} /></div>
+          <div><h3>Promos más vendidas</h3><Tabla filas={s.top_promos || []} vacio="No se vendieron promos en el período" columnas={[{ t: "#", v: (_, i) => i + 1 }, { t: "Promo", v: (p) => <><Tag c="p">promo</Tag> {p.nombre}</> }, { t: "Vendidas", der: true, v: (p) => numero(p.unidades) }, { t: "Total", der: true, v: (p) => <b>{plata(p.total_cents)}</b> }]} /></div>
+        </div>
+        <div className="grilla g2 mt">
           <div><h3>Por repartidor</h3><Tabla filas={s.por_repartidor} vacio="Sin pedidos en el período" columnas={[{ t: "Repartidor", k: "nombre" }, { t: "Pedidos", k: "pedidos", der: true }, { t: "Ventas", der: true, v: (x) => plata(x.ventas_cents) }, { t: "Envíos", der: true, v: (x) => plata(x.envios_cents) }]} /></div>
         </div>
         <GananciaProductos g={r.ganancia_productos} ir={ir} />
@@ -261,26 +265,34 @@ export function Reportes({ ir }) {
    Lo que no tiene receta o le falta el costo de un insumo no se inventa: se marca para cargarlo. */
 function GananciaProductos({ g, ir }) {
   const ESTADO = { sin_receta: "Sin receta", sin_costo: "Falta costo" };
+  const columnas = (promo) => [
+    { t: promo ? "Promo" : "Producto", v: (f) => (promo ? <><Tag c="p">promo</Tag> {f.nombre}</> : f.nombre) },
+    { t: "Precio", der: true, v: (f) => plata(f.precio_cents) },
+    { t: "Costo", der: true, v: (f) => (f.costo_cents != null ? plata(f.costo_cents) : <Tag c="a" title={f.faltan.length ? `Falta el costo de: ${f.faltan.join(", ")}` : "Falta cargar qué lleva"}>{ESTADO[f.estado]}</Tag>) },
+    { t: "Deja c/u", der: true, v: (f) => (f.deja_cents != null ? <b className={f.deja_cents < 0 ? "mal-t" : ""}>{plata(f.deja_cents)}</b> : "—") },
+    { t: "Margen", der: true, v: (f) => (f.margen != null ? `${f.margen}%` : "—") },
+    { t: "Vendidas", der: true, v: (f) => numero(f.vendidas) },
+    { t: "Ganancia del período", der: true, v: (f) => (f.ganancia_cents != null ? <><b className={f.ganancia_cents < 0 ? "mal-t" : "ok-t"}>{plata(f.ganancia_cents)}</b>{f.extras_cents > 0 && <div className="small t3">con {plata(f.extras_cents)} de extras</div>}</> : "—") },
+  ];
+  const productos = g.filas.filter((f) => !f.promo), promos = g.filas.filter((f) => f.promo);
   return <>
     <div className="fila sb wrap mt-l">
-      <div><h3 style={{ margin: 0 }}>Cuánto deja cada producto</h3><p className="t3 small" style={{ margin: "3px 0 0" }}>Precio menos el costo de su receta, con los costos de hoy de Inventario. Los extras no entran.</p></div>
-      {ir && g.sin_costo > 0 && puede("inventario") && <Btn ch icono={Boxes} onClick={() => ir("inventario", { tab: "recetas" })}>Cargar recetas</Btn>}
+      <div><h3 style={{ margin: 0 }}>Cuánto deja cada producto</h3><p className="t3 small" style={{ margin: "3px 0 0" }}>Precio menos el costo de lo que lleva, con los costos de hoy. La ganancia del período suma los extras que se cobraron (con su costo) y descuenta lo que se sacó con «sin …».</p></div>
+      <div className="fila wrap">
+        {ir && puede("configuracion") && <Btn ch icono={FileSpreadsheet} onClick={() => ir("configuracion", { sec: "archivos" })}>Planilla de costos</Btn>}
+        {ir && g.sin_costo > 0 && puede("inventario") && <Btn ch icono={Boxes} onClick={() => ir("inventario", { tab: "recetas" })}>Cargar recetas</Btn>}
+      </div>
     </div>
-    {!g.hay_recetas && <div className="mt"><Aviso c="a"><b>Todavía no hay recetas cargadas.</b> Para saber cuánto deja cada producto, cargá en Inventario el costo de cada insumo y la receta de cada producto (qué lleva y cuánto).</Aviso></div>}
+    {!g.hay_recetas && <div className="mt"><Aviso c="a"><b>Todavía no está cargado qué lleva cada producto.</b> La forma más rápida es la planilla de costos (Configuración → Cargar archivos): viene con tus productos e ingredientes, le ponés lo que vale cada cosa y la subís. También se puede cargar a mano en Inventario.</Aviso></div>}
+    {g.extras_sin_costo && g.extras_sin_costo.length > 0 && <div className="mt"><Aviso c="a">Se vendieron extras sin costo cargado ({g.extras_sin_costo.map((x) => `${x.nombre} ×${numero(x.veces)}`).join(", ")}): no se cuentan en la ganancia. Completalos en la hoja «Extras» de la planilla de costos.</Aviso></div>}
     <div className="grilla g3 mt">
       <Kpi destacado c="g" icono={Coins} label="Ganancia de lo vendido" valor={plata(g.ganancia_cents)} sub="Solo productos con receta y costo" />
       <Kpi c="v" icono={Percent} label="Margen promedio" valor={g.margen == null ? "—" : `${g.margen}%`} sub="Ganancia sobre lo cobrado" />
       <Kpi c={g.sin_costo ? "a" : "g"} icono={AlertTriangle} label="Sin receta o sin costo" valor={String(g.sin_costo)} sub={g.sin_costo ? "No se cuentan en la ganancia" : "Todos tienen costo"} />
     </div>
-    <div className="mt"><Tabla filas={g.filas} claveFila={(f) => (f.promo ? "p-" : "") + f.nombre} vacio="Todavía no hay productos" columnas={[
-      { t: "Producto", v: (f) => <>{f.nombre} {f.promo && <Tag c="p">promo</Tag>}</> },
-      { t: "Precio", der: true, v: (f) => plata(f.precio_cents) },
-      { t: "Costo", der: true, v: (f) => (f.costo_cents != null ? plata(f.costo_cents) : <Tag c="a" title={f.faltan.length ? `Falta el costo de: ${f.faltan.join(", ")}` : "Cargá la receta en Inventario → Recetas"}>{ESTADO[f.estado]}</Tag>) },
-      { t: "Deja c/u", der: true, v: (f) => (f.deja_cents != null ? <b className={f.deja_cents < 0 ? "mal-t" : ""}>{plata(f.deja_cents)}</b> : "—") },
-      { t: "Margen", der: true, v: (f) => (f.margen != null ? `${f.margen}%` : "—") },
-      { t: "Vendidas", der: true, v: (f) => numero(f.vendidas) },
-      { t: "Ganancia del período", der: true, v: (f) => (f.ganancia_cents != null ? <b className={f.ganancia_cents < 0 ? "mal-t" : "ok-t"}>{plata(f.ganancia_cents)}</b> : "—") },
-    ]} /></div>
+    <div className="mt"><Tabla filas={productos} claveFila={(f) => f.nombre} vacio="Todavía no hay productos" columnas={columnas(false)} /></div>
+    {promos.length > 0 && <><h3 className="mt-l">Cuánto deja cada promo</h3>
+      <Tabla filas={promos} claveFila={(f) => "p-" + f.nombre} columnas={columnas(true)} /></>}
   </>;
 }
 export { useRef };

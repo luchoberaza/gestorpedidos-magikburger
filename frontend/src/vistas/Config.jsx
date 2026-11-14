@@ -1,20 +1,20 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Building2, Check, Clock, CreditCard, Database, Download, FileClock, Import, KeyRound, Pencil, Plus, Printer, Upload, Wallet, X } from "lucide-react";
-import { aCentavos, api, descargar, fecha, get, global, hora, intentar, pesos, post, put, toast } from "../lib";
+import { Building2, Check, Clock, CreditCard, Database, Download, FileClock, FileSpreadsheet, Import, KeyRound, Pencil, Plus, Printer, Upload, Wallet, X } from "lucide-react";
+import { aCentavos, api, descargar, fecha, get, global, hora, intentar, pesos, plata, post, put, toast } from "../lib";
 import { Aviso, Btn, Campo, Cargando, Tabla, Tag, Vidrio, avisar, confirmar, formulario, resorte, useCarga } from "../ui";
 import { Encabezado } from "./Operacion";
 import { limpiarOpciones } from "./Finanzas";
 
 const SECCIONES = [
   ["negocio", "Negocio y marca", Building2], ["ticket", "Ticket e impresora", Printer], ["operacion", "Operación", Clock],
-  ["pagos", "Medios de pago", CreditCard], ["finanzas", "Finanzas y stock", Wallet], ["acceso", "Acceso", KeyRound],
+  ["pagos", "Medios de pago", CreditCard], ["finanzas", "Finanzas y stock", Wallet], ["archivos", "Cargar archivos", FileSpreadsheet], ["acceso", "Acceso", KeyRound],
   ["respaldo", "Respaldo", Database], ["importar", "Importar de Caja", Import], ["auditoria", "Auditoría", FileClock],
 ];
 let ultima = "negocio";
 
-export default function Config() {
-  const [sec, setSec] = useState(ultima);
+export default function Config({ params }) {
+  const [sec, setSec] = useState((params && SECCIONES.some(([k]) => k === params.sec) && params.sec) || ultima);
   useEffect(() => { ultima = sec; }, [sec]);
   const carga = useCarga(() => get("/api/config"), []);
   return <>
@@ -104,6 +104,7 @@ function Seccion({ sec, r, recargar }) {
     <Guardar claves={["acceso_libre_usuario_id"]} /></Vidrio></motion.div>;
 
   if (sec === "respaldo") return <motion.div className="col" {...anim}><Respaldo r={r} v={v} set={set} guardar={guardar} /></motion.div>;
+  if (sec === "archivos") return <motion.div {...anim}><PlanillaCostos /></motion.div>;
   if (sec === "importar") return <motion.div {...anim}><Importar /></motion.div>;
   if (sec === "auditoria") return <motion.div {...anim}><Auditoria /></motion.div>;
   return null;
@@ -183,6 +184,45 @@ function Importar() {
       <div><label className="btn prim"><Upload size={17} />{ocupado ? "Importando…" : "Elegir caja.db e importar"}<input type="file" accept=".db" hidden disabled={ocupado} onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) subir(f); }} /></label></div>
       {res && <Aviso c="g"><b>Importación terminada.</b><br />{res.gastos} gasto(s), {res.ventas} venta(s), {res.insumos} insumo(s), {res.movimientos} movimiento(s), {res.recordatorios} recordatorio(s), {res.usuarios} usuario(s).
         {res.omitidos > 0 && <><br /><span className="small">{res.omitidos} registro(s) ya estaban y no se duplicaron.</span></>}</Aviso>}
+    </div>
+  </Vidrio>;
+}
+
+/* Planilla de costos (P-019). Responsable: "un botón que sea cargar archivos […] subir y descargar […] la planilla
+   con la que le vamos a tomar lo que vale cada cosa, la carne […] si él no ingresa nada en esa fila, significa que esa
+   fila no lleva nada". Lo que se sube es lo mismo que usan Inventario, el stock y Reportes. */
+function PlanillaCostos() {
+  const [res, setRes] = useState(null);
+  const [errores, setErrores] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  const subir = async (f) => {
+    const fd = new FormData(); fd.append("archivo", f);
+    setOcupado(true); setRes(null); setErrores(null);
+    try {
+      const x = await api("/api/planilla-costos", { method: "POST", form: fd });
+      setRes(x.resultado); limpiarOpciones(); toast("Planilla cargada", "Ya se usan los costos nuevos", "ok");
+    } catch (e) {
+      if (e.status !== 401) setErrores({ titulo: e.message, lista: (e.datos && e.datos.errores) || [] });
+    } finally { setOcupado(false); }
+  };
+  const ESTADO = { sin_receta: "No lleva nada cargado", sin_costo: "Falta el costo de" };
+  return <Vidrio titulo="Planilla de costos">
+    <div className="col">
+      <p className="t2" style={{ margin: 0 }}>Lo que vale cada materia prima (la carne, el pan, el queso…) y qué lleva cada producto. Descargá la planilla, completala en Excel y subila: viene con tus productos y sus ingredientes. Con eso se calcula cuánto deja cada venta, con sus extras, y se descuenta el stock.</p>
+      <div className="fila wrap">
+        <Btn v="prim" icono={Download} onClick={() => { descargar("/api/planilla-costos.xlsx"); toast("Descargando la planilla", "Completala y subila desde acá", "ok"); }}>Descargar planilla</Btn>
+        <label className="btn"><Upload size={17} />{ocupado ? "Revisando…" : "Subir planilla"}<input type="file" accept=".xlsx" hidden disabled={ocupado} onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) subir(f); }} /></label>
+      </div>
+      <Aviso c="v">Si dejás una fila sin completar, significa que no lleva nada: esa fila no se usa.</Aviso>
+      {errores && <Aviso c="r"><b>{errores.titulo}</b>{errores.lista.length > 1 && <ul className="small" style={{ margin: "6px 0 0", paddingLeft: 18 }}>{errores.lista.map((x) => <li key={x}>{x}</li>)}</ul>}</Aviso>}
+      {res && <>
+        <Aviso c="g"><b>Planilla cargada.</b> {res.materias_nuevas} materia(s) prima nueva(s) y {res.materias_actualizadas} actualizada(s) · {res.productos_con_receta} producto(s) con lo que llevan · {res.extras} extra(s) con su costo.
+          {res.productos_sin_receta.length > 0 && <><br /><span className="small">Sin nada cargado: {res.productos_sin_receta.join(", ")}.</span></>}</Aviso>
+        {res.avisos.length > 0 && <Aviso c="a"><ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{res.avisos.map((x) => <li key={x}>{x}</li>)}</ul></Aviso>}
+        <h3 style={{ margin: "6px 0 0" }}>Así quedó el costo de cada producto</h3>
+        <Tabla filas={res.costos} claveFila={(c) => c.nombre} vacio="La planilla no traía productos"
+          columnas={[{ t: "Producto", v: (c) => <b>{c.nombre}</b> }, { t: "Costo de una unidad", der: true, v: (c) => (c.estado === "ok" ? plata(c.costo_cents) : <Tag c="a">{ESTADO[c.estado]}{c.faltan.length ? " " + c.faltan.join(", ") : ""}</Tag>) }]} />
+      </>}
     </div>
   </Vidrio>;
 }

@@ -95,7 +95,8 @@ def api_dashboard():
     return ok(
         hoy=hoy, dia=dia, ayer=ayer, mes={k: v for k, v in mes.items() if not isinstance(v, list)},
         serie=catorce["serie_dias"], gastos_por_categoria=mes["gastos_por_categoria"],
-        top_productos=mes["top_productos"][:6], pedidos_por_hora=mes["pedidos_por_hora"],
+        top_productos=mes["top_productos"][:6], top_promos=mes["top_promos"][:6],
+        pedidos_por_hora=mes["pedidos_por_hora"],
         stock_bajo=_stock_bajo(conn),
         recordatorios=fin.recordatorios_proximos(conn, hoy, config.obtener(conn, "recordatorio_dias_aviso")),
         ultimos_gastos=fin.gastos(conn, None, None)[:6],

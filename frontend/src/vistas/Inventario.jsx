@@ -33,10 +33,10 @@ function Insumos() {
       <div className="filtros"><label className="chk"><input type="checkbox" checked={soloBajos} onChange={(e) => setSoloBajos(e.target.checked)} />Ver solo stock bajo</label><span className="crece" /><Btn v="prim" icono={Plus} onClick={() => formInsumo(null, op, recargar)}>Nuevo insumo</Btn></div>
       <Tabla filas={lista} apagada={(i) => !i.activo} vacio={soloBajos ? "No hay insumos con stock bajo" : "Todavía no cargaste insumos"} vacioSub={soloBajos ? "" : "Cargá pan, carne, queso, papas, bebidas… y su stock mínimo para recibir avisos."}
         columnas={[{ t: "Insumo", v: (i) => <><b>{i.nombre}</b> {i.categoria && <Tag>{i.categoria}</Tag>} {i.origen === "caja" && <span className="t3 small">importado</span>}</> },
-          { t: "Stock", der: true, v: (i) => <><b>{numero(i.stock)}</b> <span className="t3 small">{i.unidad}</span></> },
+          { t: "Stock", der: true, v: (i) => <><b>{numero(i.stock)}</b> <span className="t3 small">{i.unidad}</span>{i.hamburguesas != null && <div className="t3 small">≈ {numero(i.hamburguesas)} hamburguesas de {numero(i.porcion_g)} g</div>}</> },
           { t: "Comprometido", der: true, v: (i) => i.comprometido ? <span className="av-t">−{numero(i.comprometido)}</span> : <span className="t3">—</span> },
           { t: "Disponible", der: true, v: (i) => <b className={i.bajo ? "mal-t" : ""}>{numero(i.disponible)}</b> },
-          { t: "Mínimo", der: true, v: (i) => numero(i.stock_minimo) }, { t: "Costo unit.", der: true, v: (i) => i.costo_unit_cents ? plata(i.costo_unit_cents) : "—" },
+          { t: "Mínimo", der: true, v: (i) => numero(i.stock_minimo) }, { t: "Costo unit.", der: true, v: (i) => i.costo_unit_cents ? <>{plata(i.costo_unit_cents)} <span className="t3 small">por {i.unidad_1 || i.unidad}</span></> : "—" },
           { t: "Estado", v: (i) => !i.activo ? <Tag>Inactivo</Tag> : i.bajo ? <Tag c="r">Stock bajo</Tag> : <Tag c="g">OK</Tag> },
           { t: "", min: true, v: (i) => <div className="fila" style={{ gap: 4, justifyContent: "flex-end" }}><Btn ch icono={ArrowLeftRight} onClick={() => formMovimiento(i, op, recargar)}>Movimiento</Btn>
             <div className="acc"><Btn icono={Pencil} title="Editar" onClick={() => formInsumo(i, op, recargar)} /><Btn className="del" icono={Trash2} title="Eliminar" onClick={async () => {
@@ -55,7 +55,9 @@ function formInsumo(i, op, alGuardar) {
       { id: "unidad", label: "Unidad", tipo: "select", valor: i ? i.unidad : (op.unidades[0] || "unidades"), opciones: [...new Set([...(i ? [i.unidad] : []), ...op.unidades])] },
       ...(i ? [] : [{ id: "stock", label: "Stock inicial", tipo: "numero", valor: 0, min: 0 }]),
       { id: "stock_minimo", label: "Stock mínimo (aviso)", tipo: "numero", valor: i ? i.stock_minimo : 0, min: 0 },
-      { id: "costo_unit", label: "Costo por unidad", tipo: "dinero", valor: i && i.costo_unit_cents ? pesos(i.costo_unit_cents) : "" },
+      { id: "costo_unit", label: "Costo por unidad", tipo: "dinero", valor: i && i.costo_unit_cents ? pesos(i.costo_unit_cents) : "", ayuda: "Lo que cuesta un kg, un litro o una unidad, según cómo lo compres." },
+      { id: "porcion_g", label: "Peso de cada hamburguesa (g)", tipo: "numero", min: 0, valor: i && i.porcion_g ? i.porcion_g : "", mostrar: (v) => v.unidad === "kg" || v.unidad === "g",
+        ayuda: "Solo para la carne: en las recetas se cuenta por hamburguesas y cada una descuenta este peso (ej.: 120). Vacío = en las recetas va en gramos." },
       { id: "activo", label: "Activo", tipo: "check", valor: i ? !!i.activo : true }],
     guardar: async (d) => { if (i) await put(`/api/insumos/${i.id}`, d); else await post("/api/insumos", d); toast(i ? "Insumo actualizado" : "Insumo creado", d.nombre, "ok"); alGuardar(); },
   });
@@ -94,16 +96,18 @@ function Recetas() {
   return <Cargando carga={carga}>{([r, ins]) => {
     const activos = ins.insumos.filter((i) => i.activo);
     if (!activos.length) return <Aviso c="v" icono={Info}>Primero cargá los insumos en <b>Insumos y stock</b>. Después, acá indicás cuánto consume cada producto y el stock se descuenta solo al cerrar la jornada.</Aviso>;
-    const opIns = activos.map((i) => [i.id, `${i.nombre} (${i.unidad})`]);
+    const opIns = activos.map((i) => [i.id, `${i.nombre} (por ${i.unidad_1 || i.unidad})`]);
+    const enReceta = (id) => { const x = ins.insumos.find((a) => a.id === id); return x ? x.receta_unidad : ""; };
     const editarReceta = (p) => abrir(function EditarReceta({ cerrar, arriba }) {
-      const [lineas, setLineas] = useState(p.receta.map((x) => ({ insumo_id: x.insumo_id, cantidad: x.cantidad })));
-      const guardar = async () => { if (await intentar(() => put(`/api/recetas/producto/${p.id}`, { receta: lineas }))) { toast("Receta guardada", p.name, "ok"); cerrar(); carga.recargar(); } };
+      const [lineas, setLineas] = useState(p.receta.map((x) => ({ insumo_id: x.insumo_id, cantidad: x.cantidad_receta })));
+      const guardar = async () => { if (await intentar(() => put(`/api/recetas/producto/${p.id}`, { receta: lineas, en_unidad_receta: true }))) { toast("Receta guardada", p.name, "ok"); cerrar(); carga.recargar(); } };
       return <Modal titulo={`Receta · ${p.name}`} onClose={() => cerrar()} arriba={arriba} pie={<><Btn v="fant" onClick={() => cerrar()}>Cancelar</Btn><Btn v="prim" onClick={guardar}>Guardar receta</Btn></>}>
-        <p className="t2 small" style={{ marginTop: 0 }}>Cantidad de cada insumo por unidad vendida.</p>
+        <p className="t2 small" style={{ marginTop: 0 }}>Cuánto lleva una unidad vendida. Lo que se compra por kg va en gramos y la carne, en hamburguesas.</p>
         <div className="col s">
           {lineas.map((l, k) => <div key={k} className="fila">
             <select className="inp crece" value={l.insumo_id} onChange={(e) => setLineas(lineas.map((x, j) => j === k ? { ...x, insumo_id: +e.target.value } : x))}>{opIns.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>
-            <input className="inp" style={{ width: 110 }} type="number" step="any" min="0" value={l.cantidad} onChange={(e) => setLineas(lineas.map((x, j) => j === k ? { ...x, cantidad: e.target.value } : x))} />
+            <input className="inp" style={{ width: 96 }} type="number" step="any" min="0" value={l.cantidad} onChange={(e) => setLineas(lineas.map((x, j) => j === k ? { ...x, cantidad: e.target.value } : x))} />
+            <span className="t2 small" style={{ width: 92 }}>{enReceta(l.insumo_id)}</span>
             <Btn v="fant" ico icono={X} onClick={() => setLineas(lineas.filter((_, j) => j !== k))} /></div>)}
           {!lineas.length && <p className="t3 small">Sin insumos. Agregá el primero.</p>}
         </div>
@@ -111,18 +115,19 @@ function Recetas() {
       </Modal>;
     });
     const editarIng = (i) => formulario({
-      titulo: `Insumo de «${i.name}»`, intro: <p className="t2 small" style={{ marginTop: 0 }}>Si se agrega como extra, se descuenta esta cantidad. Si se quita de la base, se deja de descontar.</p>,
-      campos: [{ id: "insumo_id", label: "Insumo", tipo: "select", full: true, valor: i.insumo ? i.insumo.insumo_id : "", opciones: [["", "— No descuenta stock"], ...opIns] }, { id: "cantidad", label: "Cantidad por unidad", tipo: "numero", valor: i.insumo ? i.insumo.cantidad : 1, min: 0 }],
-      guardar: async (d) => { await put(`/api/recetas/ingrediente/${i.id}`, d); carga.recargar(); },
+      titulo: `Insumo de «${i.name}»`, intro: <p className="t2 small" style={{ marginTop: 0 }}>Cuando se agrega como extra, suma esta cantidad al costo y al stock (ej.: Extra carne = 1 hamburguesa). Cuando se pide «sin …», el producto deja de llevar ese insumo.</p>,
+      campos: [{ id: "insumo_id", label: "Insumo", tipo: "select", full: true, valor: i.insumo ? i.insumo.insumo_id : "", opciones: [["", "— No descuenta stock"], ...opIns] },
+        { id: "cantidad", label: "Cuánto suma como extra", tipo: "numero", valor: i.insumo ? i.insumo.cantidad_receta : 1, min: 0, ayuda: "En gramos si se compra por kg; la carne, en hamburguesas. 0 = solo para el «sin …»." }],
+      guardar: async (d) => { await put(`/api/recetas/ingrediente/${i.id}`, { ...d, en_unidad_receta: true }); carga.recargar(); },
     });
     return <>
-      <div className="mb"><Aviso c="v" icono={Info}>Indicá cuánto lleva cada producto (ej: <b>Doble cheddar</b> = 1 pan, 2 medallones, 4 fetas). Al cerrar la jornada se descuenta lo vendido. Los extras ligados a un insumo suman al agregarse y restan al quitarse.</Aviso></div>
+      <div className="mb"><Aviso c="v" icono={Info}>Indicá cuánto lleva cada producto (ej.: <b>Doble cheddar</b> = 1 pan, 2 hamburguesas de carne, 4 fetas). Al cerrar la jornada se descuenta lo vendido. Los extras ligados a un insumo suman al agregarse y el «sin …» lo saca. Todo esto también se carga junto con la planilla de costos (Configuración → Cargar archivos).</Aviso></div>
       <div className="grilla g2" style={{ alignItems: "start" }}>
         <div><h3>Productos</h3><Tabla filas={r.productos} apagada={(p) => !p.active} vacio="No hay productos" columnas={[{ t: "Producto", v: (p) => <b>{p.name}</b> },
-          { t: "Receta", v: (p) => p.receta.length ? <div className="chips">{p.receta.map((x) => <Tag key={x.insumo_id} c="v">{numero(x.cantidad)} {x.unidad} {x.nombre}</Tag>)}</div> : <span className="t3 small">Sin receta</span> },
+          { t: "Receta", v: (p) => p.receta.length ? <div className="chips">{p.receta.map((x) => <Tag key={x.insumo_id} c="v">{numero(x.cantidad_receta)} {x.cantidad_receta === 1 ? x.receta_unidad_1 : x.receta_unidad} {x.nombre}</Tag>)}</div> : <span className="t3 small">Sin receta</span> },
           { t: "", min: true, v: (p) => <Btn ch icono={Pencil} onClick={() => editarReceta(p)}>Editar</Btn> }]} /></div>
         <div><h3>Ingredientes y extras</h3><Tabla filas={r.ingredientes} apagada={(i) => !i.active} vacio="No hay ingredientes" columnas={[{ t: "Ingrediente", v: (i) => <b>{i.name}</b> },
-          { t: "Insumo que usa", v: (i) => { if (!i.insumo) return <span className="t3 small">No descuenta</span>; const x = ins.insumos.find((a) => a.id === i.insumo.insumo_id); return x ? `${numero(i.insumo.cantidad)} ${x.unidad} de ${x.nombre}` : "—"; } },
+          { t: "Insumo que usa", v: (i) => { if (!i.insumo) return <span className="t3 small">No descuenta</span>; const x = ins.insumos.find((a) => a.id === i.insumo.insumo_id); if (!x) return "—"; return i.insumo.cantidad ? `${numero(i.insumo.cantidad_receta)} ${i.insumo.cantidad_receta === 1 ? i.insumo.receta_unidad_1 : i.insumo.receta_unidad} de ${x.nombre}` : <span className="small">{x.nombre} <span className="t3">(solo para el «sin …»)</span></span>; } },
           { t: "", min: true, v: (i) => <Btn ch icono={Pencil} onClick={() => editarIng(i)} /> }]} /></div>
       </div>
     </>;

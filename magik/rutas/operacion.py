@@ -338,6 +338,28 @@ def api_liquidacion():
     )
 
 
+@bp.get("/api/liquidation/detalle")
+@auth.requiere("liquidacion")
+def api_liquidacion_detalle():
+    """P-018: de dónde sale el efectivo a rendir y lo facturado, pedido por pedido.
+    Es la misma cuenta que la pantalla (liq.calcular), así los totales coinciden siempre."""
+    conn = get_db()
+    hoy = liq.jornada_actual(conn)
+    r = liq.calcular(conn, hoy, detalle=True)
+    return ok(
+        jornada=hoy, pedidos=r["pedidos"],
+        facturado_cents=r["gross_total_cents"], cash_to_render_cents=r["cash_to_render_cents"],
+        cash_collected_cents=r["cash_cents"], delivery_cash_cents=r["delivery_cents"],
+        cash_float_total_cents=r["cash_float_total_cents"], transfer_cents=r["transfer_cents"],
+        pending_cents=r["pending_cents"], pending_count=r["pending_count"],
+        delivery_all_cents=r["delivery_all_cents"],
+        couriers=[{"courier_id": c["courier_id"], "courier_name": c["courier_name"],
+                   "cash_collected_cents": c["cash_cents"], "delivery_cents": c["delivery_cents"],
+                   "cash_float_cents": c["cash_float_cents"], "to_render_cents": c["to_render_cents"],
+                   "gross_total_cents": c["gross_total_cents"]} for c in r["couriers"]],
+    )
+
+
 @bp.post("/api/cierre")
 @auth.requiere("cierre")
 def api_cierre():
