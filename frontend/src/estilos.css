@@ -178,6 +178,7 @@ h1, h2, h3 { font-family: var(--f-disp); text-wrap: balance; }
 .kpi .k-i svg { width: 16px; height: 16px; }
 .kpi .k-v { position: relative; font-family: var(--f-disp); font-size: 26px; font-weight: var(--w-num); margin-top: 8px; letter-spacing: var(--track-disp); font-variant-numeric: tabular-nums; line-height: 1.15; }
 .kpi .k-s { position: relative; color: var(--txt-3); font-size: 12px; margin-top: 2px; }
+.kpi .k-s b { color: var(--txt-2); font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kpi.grande .k-v { font-size: 34px; }
 .kpi.v .k-i { color: var(--acc-2); background: var(--acc-soft); }
 .kpi.p .k-i { color: var(--promo-2); background: var(--promo-soft); }

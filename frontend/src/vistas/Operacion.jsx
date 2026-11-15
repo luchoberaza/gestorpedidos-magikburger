@@ -119,7 +119,13 @@ function VistaLiquidacion({ l, cierres, recargar }) {
         {puede("cierre") && <Btn v="prim" icono={Lock} disabled={!l.abiertos_total} onClick={cerrar}>Cerrar jornada</Btn>}
       </Encabezado>
       <div className="grilla g4">
-        <Kpi destacado grande c="p" icono={Wallet} label="Efectivo a rendir" valor={plata(l.cash_to_render_cents)} sub="Lo que tiene que entrar a la caja" onClick={() => verDesglose("rendir")} />
+        {/* P-020: "ves la diferencia entre el efectivo a rendir y lo facturado? no tiene sentido". El a rendir suma el
+            cambio que vuelve de cada repartidor (regla de la app original: "Total − Transferencia + Cambios"); la
+            app vieja lo mostraba al lado y la tarjeta no, así que pasaba lo facturado sin explicar por qué. */}
+        <Kpi destacado grande c="p" icono={Wallet} label="Efectivo a rendir" valor={plata(l.cash_to_render_cents)} onClick={() => verDesglose("rendir")}
+          sub={l.cash_float_total_cents > 0
+            ? <>Ventas en efectivo <b>{plata(l.cash_base_cents)}</b> + cambio <b>{plata(l.cash_float_total_cents)}</b></>
+            : "Lo que tiene que entrar a la caja"} />
         <Kpi c="v" icono={TrendingUp} label="Facturado" valor={plata(l.total_cents)} sub={`${l.orders_count} pedido(s) · ${l.delivered_count} entregado(s)`} onClick={() => verDesglose("facturado")} />
         <Kpi c="b" icono={ArrowLeftRight} label="Otros medios" valor={plata(l.transfer_cents)} sub="Transferencias y similares: no se rinden" />
         <Kpi c="g" icono={Bike} label="Envíos" valor={plata(l.delivery_total_cents)} sub="Quedan para los repartidores" />

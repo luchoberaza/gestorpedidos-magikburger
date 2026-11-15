@@ -1,22 +1,28 @@
 /* Efectos de la interfaz: números que ruedan, brillo bajo el cursor, el borde del botón
    principal y el fondo del ingreso. Cada uno dice de qué componente gratuito sale. */
 import { useEffect, useRef, useState } from "react";
-import NumberFlow from "@number-flow/react";
-import { simbolo } from "./lib";
+import NumberFlow, { useIsSupported } from "@number-flow/react";
+import { plata, simbolo } from "./lib";
 import Grainient from "./rb/Grainient";
 
-/* ---------- Números que ruedan: NumberFlow (number-flow.barvian.me, MIT) ---------- */
+/* ---------- Números que ruedan: NumberFlow (number-flow.barvian.me, MIT) ----------
+   NumberFlow necesita funciones de CSS nuevas (mod(), round()). La caja del local corre Electron 30
+   (Chromium 124), que no las tiene, y ahí NumberFlow dibuja el «$» encima del primer dígito (P-020:
+   "los numeros se ven amontonados"). Sin soporte, el número va como texto común, igual que el resto. */
 const FORMATO = (dec) => ({ minimumFractionDigits: dec, maximumFractionDigits: dec, useGrouping: "always" });
 
 /** Plata en centavos, con el mismo formato que plata(): "$ 1.630" o "$ 1.630,50". */
 export function Monto({ cents, className }) {
+  const rueda = useIsSupported();
   const c = Math.round(Number(cents || 0));
+  if (!rueda) return <span className={className}>{plata(c)}</span>;
   return <NumberFlow className={className} value={c / 100} locales="es-UY" format={FORMATO(c % 100 ? 2 : 0)} prefix={`${simbolo()} `} willChange />;
 }
 
 /** Recibe un texto ya formateado: si es plata o un número, lo anima; si no, lo deja como está. */
 export function ValorAnimado({ valor }) {
-  if (typeof valor !== "string") return valor;
+  const rueda = useIsSupported();
+  if (typeof valor !== "string" || !rueda) return valor;
   const sim = simbolo().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const m = new RegExp(`^${sim} (−?)([\\d.]+)(?:,(\\d{2}))?$`).exec(valor);
   if (m) {
